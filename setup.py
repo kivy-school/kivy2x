@@ -214,7 +214,7 @@ c_options['use_mesagl'] = False
 c_options['use_x11'] = False
 c_options['use_wayland'] = False
 c_options['use_gstreamer'] = None
-c_options['use_avfoundation'] = platform in ['darwin', 'ios']
+c_options['use_avfoundation'] = False #platform in ['darwin', 'ios']
 c_options['use_osx_frameworks'] = platform == 'darwin'
 c_options['debug_gl'] = False
 
@@ -248,10 +248,10 @@ use_embed_signature = use_embed_signature or bool(
 # This determines whether Cython specific functionality may be used.
 can_use_cython = True
 
-if platform in ('ios', 'android'):
-    # NEVER use or declare cython on these platforms
-    print('Not using cython on %s' % platform)
-    can_use_cython = False
+# if platform in ('ios', 'android'):
+#     # NEVER use or declare cython on these platforms
+#     print('Not using cython on %s' % platform)
+#     can_use_cython = False
 
 
 # -----------------------------------------------------------------------------
@@ -672,7 +672,7 @@ def determine_gl_flags():
     if platform == 'win32':
         flags['libraries'] = ['opengl32', 'glew32']
     elif platform == 'ios':
-        flags['libraries'] = ['GLESv2']
+        #flags['libraries'] = ['GLESv2']
         flags['extra_link_args'] = ['-framework', 'OpenGLES']
     elif platform == 'darwin':
         flags['extra_link_args'] = ['-framework', 'OpenGL']

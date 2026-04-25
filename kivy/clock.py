@@ -483,87 +483,87 @@ def _get_sleep_obj():
     pass
 
 
-try:
-    import ctypes
-    if platform in ('win32', 'cygwin'):
-        # Win32 Sleep function is only 10-millisecond resolution, so
-        # instead use a waitable timer object, which has up to
-        # 100-nanosecond resolution (hardware and implementation
-        # dependent, of course).
+# try:
+#     import ctypes
+#     if platform in ('win32', 'cygwin'):
+#         # Win32 Sleep function is only 10-millisecond resolution, so
+#         # instead use a waitable timer object, which has up to
+#         # 100-nanosecond resolution (hardware and implementation
+#         # dependent, of course).
 
-        _kernel32 = ctypes.windll.kernel32
+#         _kernel32 = ctypes.windll.kernel32
 
-        def _get_sleep_obj():  # noqa: F811
-            return _kernel32.CreateWaitableTimerA(None, True, None)
+#         def _get_sleep_obj():  # noqa: F811
+#             return _kernel32.CreateWaitableTimerA(None, True, None)
 
-        def _usleep(microseconds, obj=None):
-            delay = ctypes.c_longlong(int(-microseconds * 10))
-            _kernel32.SetWaitableTimer(
-                obj, ctypes.byref(delay), 0,
-                ctypes.c_void_p(), ctypes.c_void_p(), False)
-            _kernel32.WaitForSingleObject(obj, 0xffffffff)
-    else:
-        if platform == 'darwin':
-            _libc = ctypes.CDLL('libc.dylib')
-        else:
-            from ctypes.util import find_library
-            _libc = ctypes.CDLL(find_library('c'), use_errno=True)
+#         def _usleep(microseconds, obj=None):
+#             delay = ctypes.c_longlong(int(-microseconds * 10))
+#             _kernel32.SetWaitableTimer(
+#                 obj, ctypes.byref(delay), 0,
+#                 ctypes.c_void_p(), ctypes.c_void_p(), False)
+#             _kernel32.WaitForSingleObject(obj, 0xffffffff)
+#     else:
+#         if platform == 'darwin':
+#             _libc = ctypes.CDLL('libc.dylib')
+#         else:
+#             from ctypes.util import find_library
+#             _libc = ctypes.CDLL(find_library('c'), use_errno=True)
 
-            def _libc_clock_gettime_wrapper():
-                from os import strerror
+#             def _libc_clock_gettime_wrapper():
+#                 from os import strerror
 
-                class struct_tv(ctypes.Structure):
-                    _fields_ = [('tv_sec', ctypes.c_long),
-                                ('tv_usec', ctypes.c_long)]
+#                 class struct_tv(ctypes.Structure):
+#                     _fields_ = [('tv_sec', ctypes.c_long),
+#                                 ('tv_usec', ctypes.c_long)]
 
-                _clock_gettime = _libc.clock_gettime
-                _clock_gettime.argtypes = [ctypes.c_long,
-                                           ctypes.POINTER(struct_tv)]
+#                 _clock_gettime = _libc.clock_gettime
+#                 _clock_gettime.argtypes = [ctypes.c_long,
+#                                            ctypes.POINTER(struct_tv)]
 
-                if 'linux' in platform:
-                    _clockid = 4  # CLOCK_MONOTONIC_RAW (Linux specific)
-                elif 'freebsd' in platform:
-                    # clockid constants from sys/time.h
-                    # _clockid = 4 # CLOCK_MONOTONIC (FreeBSD specific)
-                    # 11: CLOCK_MONOTONIC_PRECISE (FreeBSD known OK for 10.2)
-                    _clockid = 11
-                    # _clockid = 12
-                    # 12: CLOCK_MONOTONIC_FAST (FreeBSD specific)
-                    Logger.debug('clock.py: {{{:s}}} clock ID {:d}'.format(
-                        platform, _clockid))
-                elif 'openbsd' in platform:
-                    _clockid = 3  # CLOCK_MONOTONIC
-                else:
-                    _clockid = 1  # CLOCK_MONOTONIC
+#                 if 'linux' in platform:
+#                     _clockid = 4  # CLOCK_MONOTONIC_RAW (Linux specific)
+#                 elif 'freebsd' in platform:
+#                     # clockid constants from sys/time.h
+#                     # _clockid = 4 # CLOCK_MONOTONIC (FreeBSD specific)
+#                     # 11: CLOCK_MONOTONIC_PRECISE (FreeBSD known OK for 10.2)
+#                     _clockid = 11
+#                     # _clockid = 12
+#                     # 12: CLOCK_MONOTONIC_FAST (FreeBSD specific)
+#                     Logger.debug('clock.py: {{{:s}}} clock ID {:d}'.format(
+#                         platform, _clockid))
+#                 elif 'openbsd' in platform:
+#                     _clockid = 3  # CLOCK_MONOTONIC
+#                 else:
+#                     _clockid = 1  # CLOCK_MONOTONIC
 
-                tv = struct_tv()
+#                 tv = struct_tv()
 
-                def _time():
-                    if _clock_gettime(ctypes.c_long(_clockid),
-                                      ctypes.pointer(tv)) != 0:
-                        _ernno = ctypes.get_errno()
-                        raise OSError(_ernno, strerror(_ernno))
-                    return tv.tv_sec + (tv.tv_usec * 0.000000001)
+#                 def _time():
+#                     if _clock_gettime(ctypes.c_long(_clockid),
+#                                       ctypes.pointer(tv)) != 0:
+#                         _ernno = ctypes.get_errno()
+#                         raise OSError(_ernno, strerror(_ernno))
+#                     return tv.tv_sec + (tv.tv_usec * 0.000000001)
 
-                return _time
+#                 return _time
 
-            _default_time = _libc_clock_gettime_wrapper()  # noqa: F811
+#             _default_time = _libc_clock_gettime_wrapper()  # noqa: F811
 
-        _libc.usleep.argtypes = [ctypes.c_ulong]
-        _libc_usleep = _libc.usleep
+#         _libc.usleep.argtypes = [ctypes.c_ulong]
+#         _libc_usleep = _libc.usleep
 
-        def _usleep(microseconds, obj=None):
-            _libc_usleep(int(microseconds))
+#         def _usleep(microseconds, obj=None):
+#             _libc_usleep(int(microseconds))
 
-except (OSError, ImportError, AttributeError):
-    # ImportError: ctypes is not available on python-for-android.
-    # AttributeError: ctypes is now available on python-for-android, but
-    #   "undefined symbol: clock_gettime". CF #3797
-    # OSError: if the libc cannot be read (like with buildbot: invalid ELF
-    # header)
+# except (OSError, ImportError, AttributeError):
+#     # ImportError: ctypes is not available on python-for-android.
+#     # AttributeError: ctypes is now available on python-for-android, but
+#     #   "undefined symbol: clock_gettime". CF #3797
+#     # OSError: if the libc cannot be read (like with buildbot: invalid ELF
+#     # header)
 
-    def _usleep(microseconds, obj=None):
-        time.sleep(microseconds / 1000000.)
+def _usleep(microseconds, obj=None):
+    time.sleep(microseconds / 1000000.)
 
 
 class ClockBaseBehavior(object):
