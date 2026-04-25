@@ -357,7 +357,10 @@ int Camera::startCaptureDevice() {
 
     capture = [[KivyCaptureDelegate alloc] init];
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
+#pragma clang diagnostic pop
 
     if ([devices count] == 0) {
         NSLog(@"AV Foundation didn't find any attached Video Input Devices!\n");
@@ -394,7 +397,6 @@ int Camera::startCaptureDevice() {
 
         dispatch_queue_t queue = dispatch_queue_create("cameraQueue", NULL);
         [mCaptureDecompressedVideoOutput setSampleBufferDelegate:capture queue:queue];
-        dispatch_release(queue);
 
         NSDictionary *pixelBufferOptions ;
         if (width > 0 && height > 0) {
@@ -429,6 +431,8 @@ int Camera::startCaptureDevice() {
 
         AVCaptureConnection *conn = [mCaptureDecompressedVideoOutput connectionWithMediaType:AVMediaTypeVideo];
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
         /* By default, on iOS, We select the correct AVCaptureVideoOrientation based on device orientation */
         AVCaptureVideoOrientation default_orientation = (AVCaptureVideoOrientation)[[UIDevice currentDevice] orientation];
@@ -436,6 +440,7 @@ int Camera::startCaptureDevice() {
         AVCaptureVideoOrientation default_orientation = AVCaptureVideoOrientationLandscapeRight;
 #endif
         [conn setVideoOrientation:default_orientation];
+#pragma clang diagnostic pop
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [mCaptureSession startRunning];
@@ -452,9 +457,12 @@ int Camera::startCaptureDevice() {
 
 void Camera::setVideoOrientation(int orientation) {
     AVCaptureConnection *conn = [mCaptureDecompressedVideoOutput connectionWithMediaType:AVMediaTypeVideo];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if([conn isVideoOrientationSupported]){
         [conn setVideoOrientation:(AVCaptureVideoOrientation) orientation];
     }
+#pragma clang diagnostic pop
 }
 
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
@@ -463,7 +471,10 @@ void Camera::changeCameraInput(int _cameraNum) {
     NSArray *devices;
     AVCaptureDevice *device;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
+#pragma clang diagnostic pop
 
     if (_cameraNum >= 0) {
         int camNum = _cameraNum % [devices count];
@@ -799,12 +810,13 @@ void avf_camera_get_metadata(camera_t camera, char **metatype, char **data) {
     *data = metadata->data;
 }
 
-bool avf_camera_have_new_metadata(camera_t camera){
+bool avf_camera_have_new_metadata(camera_t camera) {
     return ((Camera *)camera)->haveNewMetadata();
 }
 
-void avf_camera_set_video_orientation(camera_t camera, int orientation){
+bool avf_camera_set_video_orientation(camera_t camera, int orientation) {
     ((Camera *)camera)->setVideoOrientation(orientation);
+    return true;
 }
 
 int avf_camera_get_device_orientation() {
@@ -830,48 +842,32 @@ void avf_camera_zoom_level(camera_t camera, float zoomLevel) {
 char *avf_camera_documents_directory() {
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *basePath = paths.firstObject;
-    return (char *)[basePath UTF8String];
+    NSString *docDir = [paths firstObject];
+    return (char *)[docDir UTF8String];
 #else
-    return "";
+    return (char *)"";
 #endif
 }
 
 void avf_camera_save_pixels(camera_t camera, unsigned char *pixels, int width, int height, char *path, float quality) {
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
-    int size = width * height * 4;
-    if (strcmp(path,"") == 0) {
-        unsigned char *local_pixels = pixels;
-        pixels = (unsigned char *)malloc(size);
-        memcpy(pixels, local_pixels, size*sizeof(char));
-    }
-    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixels, size, NULL);
-    int bitsPerComponent = 8;
-    int bitsPerPixel = 32;
-    int bytesPerRow = 4*width;
-    CGColorSpaceRef colorSpaceRef = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Big|kCGImageAlphaLast;
-    CGColorRenderingIntent renderingIntent = kCGRenderingIntentDefault;
-    CGImageRef imageRef = CGImageCreate(width,
-                                        height,
-                                        8,
-                                        32,
-                                        4*width,colorSpaceRef,
-                                        bitmapInfo,
-                                        provider,NULL,NO,renderingIntent);
-    UIImage *newImage = [UIImage imageWithCGImage:imageRef];
-
-    if (strcmp(path,"") == 0) {
-
-        UIImageWriteToSavedPhotosAlbum(newImage, ((Camera *)camera)->photoapp,
-                                     @selector(thisImage:photoAppCallback:usingContextInfo:), pixels);
-    } else {
-        NSString* filePath = @(path);
-        [UIImageJPEGRepresentation(newImage, quality) writeToFile:filePath atomically:YES];
-    }
-
-    CGColorSpaceRelease(colorSpaceRef);
-    CGDataProviderRelease(provider);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(
+        pixels, width, height, 8, width * 4,
+        colorSpace, kCGBitmapByteOrderDefault | kCGImageAlphaPremultipliedLast);
+    CGImageRef imageRef = CGBitmapContextCreateImage(context);
+    UIImage *image = [UIImage imageWithCGImage:imageRef];
+    CGContextRelease(context);
+    CGColorSpaceRelease(colorSpace);
     CGImageRelease(imageRef);
+    NSString *nsPath = [NSString stringWithUTF8String:path];
+    if ([nsPath length] == 0) {
+        PhotoAppDelegate *app = [[PhotoAppDelegate alloc] init];
+        UIImageWriteToSavedPhotosAlbum(image, app,
+            @selector(thisImage:photoAppCallback:usingContextInfo:), NULL);
+    } else {
+        NSData *data = UIImageJPEGRepresentation(image, quality);
+        [data writeToFile:nsPath atomically:YES];
+    }
 #endif
 }

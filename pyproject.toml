@@ -15,3 +15,25 @@ requires = [
 [tool.pytest.ini_options]
 addopts = "--benchmark-skip --benchmark-warmup=on --benchmark-warmup-iterations=5 --benchmark-disable-gc --benchmark-name=short --benchmark-sort=mean --benchmark-group-by=fullfunc --benchmark-storage=.benchmarks-kivy --benchmark-save=kivy"
 markers = "incremental: mark a test as incremental."
+
+
+
+[tool.cibuildwheel.android]
+#repair-wheel-command = "cp {wheel} {dest_dir}/"
+before-all = " $(pwd)/tools/build_android_dependencies.sh"
+
+[tool.cibuildwheel.android.environment]
+ANDROID_NDK_HOME = "/Volumes/CodeSSD/thorvg-development/kivy-thor-games/kivy-thor-games/.psproject/android-sdk/ndk/27.3.13750724"
+ANDROID_API_LEVEL = "24"
+KIVY_DEPS_ROOT = "$(pwd)/android-kivy-dependencies"
+KIVY_SPLIT_EXAMPLES = "1"
+KIVY_CROSS_PLATFORM = "android"
+
+[tool.cibuildwheel.ios]
+before-all = " $(pwd)/tools/build_ios_dependencies.sh"
+repair-wheel-command = "cp {wheel} {dest_dir}/ && python $(pwd)/tools/add-ios-frameworks.py {dest_dir}"
+
+[tool.cibuildwheel.ios.environment]
+KIVY_DEPS_ROOT = "$(pwd)/ios-kivy-dependencies"
+KIVY_SPLIT_EXAMPLES = "1"
+

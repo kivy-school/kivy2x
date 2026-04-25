@@ -197,6 +197,113 @@ if KIVY_DEPS_ROOT is None and platform in ('linux', 'darwin'):
     print("and set KIVY_DEPS_ROOT to the root of the dependencies directory.")
     print("###############################################")
 
+plat_options = OrderedDict()
+
+if platform == 'ios':
+
+    from platform import ios_ver
+    ios_info = ios_ver()
+    plat_arch = (
+        "ios-arm64_x86_64-simulator" if ios_info.is_simulator else "ios-arm64"
+    )
+
+    ios_data = OrderedDict()
+
+    sdl2_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'SDL2.xcframework')
+    sdl2_image_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'SDL2_image.xcframework')
+    sdl2_mixer_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'SDL2_mixer.xcframework')
+    sdl2_ttf_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'SDL2_ttf.xcframework')
+
+    sdl2_fw = join(sdl2_xc, plat_arch, 'SDL2.framework')
+    sdl2_image_fw = join(sdl2_image_xc, plat_arch, 'SDL2_image.framework')
+    sdl2_mixer_fw = join(sdl2_mixer_xc, plat_arch, 'SDL2_mixer.framework')
+    sdl2_ttf_fw = join(sdl2_ttf_xc, plat_arch, 'SDL2_ttf.framework')
+
+    sdl2_headers = join(sdl2_fw, 'Headers')
+    sdl2_image_headers = join(sdl2_image_fw, 'Headers')
+    sdl2_mixer_headers = join(sdl2_mixer_fw, 'Headers')
+    sdl2_ttf_headers = join(sdl2_ttf_fw, 'Headers')
+
+    #egl_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libEGL.xcframework')
+    gles_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libGLESv2.xcframework')
+
+    #egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
+    gles_fw = join(gles_xc, plat_arch, 'libGLESv2.framework')
+
+    egl_headers = join(KIVY_DEPS_ROOT, 'dist', 'include')
+
+    ios_data['frameworks'] = {
+        'SDL2': {
+            'path': sdl2_fw,
+            'headers': sdl2_headers,
+            'xc': sdl2_xc,
+        },
+        'SDL2_image': {
+            'path': sdl2_image_fw,
+            'headers': sdl2_image_headers,
+            'xc': sdl2_image_xc,
+        },
+        'SDL2_mixer': {
+            'path': sdl2_mixer_fw,
+            'headers': sdl2_mixer_headers,
+            'xc': sdl2_mixer_xc,
+        },
+        'SDL2_ttf': {
+            'path': sdl2_ttf_fw,
+            'headers': sdl2_ttf_headers,
+            'xc': sdl2_ttf_xc,
+        },
+        # 'EGL': {
+        #     'path': egl_fw,
+        #     'headers': egl_headers,
+        #     'xc': egl_xc,
+        # },
+        'GLESv2': {
+            'path': gles_fw,
+            'headers': "",
+            'xc': gles_xc,
+        }
+    }
+
+    ios_data['platform_arch'] = plat_arch
+
+    plat_options['ios'] = ios_data
+
+if platform == 'android':
+    android_data = OrderedDict()
+    root = KIVY_DEPS_ROOT if KIVY_DEPS_ROOT else os.getcwd()
+
+    # Android uses .so files instead of frameworks
+    # Assuming SDL2 libraries are in dist/libs/{ABI}/ structure
+    android_abis = ['arm64-v8a', 'x86_64']
+
+    android_data['libraries'] = {}
+
+    for abi in android_abis:
+        lib_path = join(root, 'dist', 'libs', abi)
+
+        android_data['libraries'][abi] = {
+            'SDL2': {
+                'path': join(lib_path, 'libSDL2.so'),
+                'headers': join(root, 'dist', 'include', 'SDL2'),
+            },
+            'SDL2_image': {
+                'path': join(lib_path, 'libSDL2_image.so'),
+                'headers': join(root, 'dist', 'include', 'SDL2_image'),
+            },
+            'SDL2_mixer': {
+                'path': join(lib_path, 'libSDL2_mixer.so'),
+                'headers': join(root, 'dist', 'include', 'SDL2_mixer'),
+            },
+            'SDL2_ttf': {
+                'path': join(lib_path, 'libSDL2_ttf.so'),
+                'headers': join(root, 'dist', 'include', 'SDL2_ttf'),
+            }
+        }
+
+    android_data['abis'] = android_abis
+
+    plat_options['android'] = android_data
 
 # -----------------------------------------------------------------------------
 # Detect options
@@ -214,7 +321,7 @@ c_options['use_mesagl'] = False
 c_options['use_x11'] = False
 c_options['use_wayland'] = False
 c_options['use_gstreamer'] = None
-c_options['use_avfoundation'] = False #platform in ['darwin', 'ios']
+c_options['use_avfoundation'] = platform in ['darwin', 'ios']
 c_options['use_osx_frameworks'] = platform == 'darwin'
 c_options['debug_gl'] = False
 
@@ -340,6 +447,15 @@ class KivyBuildExt(build_ext, object):
             for e in self.extensions:
                 e.extra_link_args += ['-lm']
 
+        # Add Objective-C++ (.mm) support — distutils doesn't know .mm by default.
+        # Clang handles .mm as Obj-C++ automatically once it's in src_extensions.
+        if platform in ('ios', 'darwin'):
+            if hasattr(self.compiler, 'src_extensions') and \
+                    '.mm' not in self.compiler.src_extensions:
+                self.compiler.src_extensions.append('.mm')
+            if hasattr(self.compiler, 'language_map'):
+                self.compiler.language_map.setdefault('.mm', 'c++')
+
         super().build_extensions()
 
     def update_if_changed(self, fn, content):
@@ -458,7 +574,9 @@ if platform == 'ios':
     c_options['use_sdl2'] = True
 
 elif platform == 'android':
+    print('Android environment detect, use it.')
     c_options['use_android'] = True
+    c_options['use_sdl2'] = True
 
 # detect gstreamer, only on desktop
 # works if we forced the options or in autodetection
@@ -570,13 +688,87 @@ if c_options['use_sdl2'] or can_autodetect_sdl2:
             sdl2_source = 'macos-frameworks'
             print('Activate SDL2 compilation')
 
-    if not sdl2_valid and platform != "ios":
+    if not sdl2_valid and platform not in ("ios", "android"):
         # use pkg-config approach instead
         sdl2_flags = pkgconfig('sdl2', 'SDL2_ttf', 'SDL2_image', 'SDL2_mixer')
         if 'libraries' in sdl2_flags:
             print('SDL2 found via pkg-config')
             c_options['use_sdl2'] = True
             sdl2_source = 'pkg-config'
+
+    if platform == 'ios':
+        ios_data = plat_options['ios']
+        ios_frameworks = ios_data['frameworks']
+
+        sdl2_flags = {
+            'extra_link_args': [],
+            'include_dirs': [],
+        }
+        sdl2_valid = True
+        for name in ('SDL2', 'SDL2_ttf', 'SDL2_image', 'SDL2_mixer'):
+            fw_info = ios_frameworks[name]
+            f_path = fw_info['path']
+            if not exists(f_path):
+                print('Missing framework {}'.format(f_path))
+                sdl2_valid = False
+                continue
+            sdl2_flags['extra_link_args'] += [
+                '-framework', name, '-F', dirname(f_path)]
+            sdl2_flags['include_dirs'] += [
+                join(f_path, 'Headers'),
+                join(KIVY_DEPS_ROOT, 'dist', 'include'),
+            ]
+            print('Found sdl2 frameworks: {}'.format(f_path))
+
+        if sdl2_valid:
+            c_options['use_sdl2'] = True
+            sdl2_source = 'ios-frameworks'
+            print('Activate SDL2 compilation')
+        else:
+            c_options['use_sdl2'] = False
+
+    if platform == 'android':
+        root = KIVY_DEPS_ROOT if KIVY_DEPS_ROOT else os.getcwd()
+        android_data = plat_options['android']
+        android_libs = android_data['libraries']
+
+        # Determine current ABI from CIBW_HOST_TRIPLET
+        host_triplet = environ.get('CIBW_HOST_TRIPLET', '')
+        if 'aarch64' in host_triplet:
+            current_abi = 'arm64-v8a'
+        elif 'x86_64' in host_triplet:
+            current_abi = 'x86_64'
+        else:
+            current_abi = 'arm64-v8a'  # default
+
+        sdl2_flags = {
+            'libraries': ['SDL2', 'SDL2_ttf', 'SDL2_image', 'SDL2_mixer'],
+            'extra_link_args': [],
+            'include_dirs': [],
+            'library_dirs': [],
+        }
+
+        # Add base include dir for internal SDL2 includes like <SDL2/SDL.h>
+        include_base = join(root, 'dist', 'include')
+        if exists(include_base):
+            sdl2_flags['include_dirs'].append(include_base)
+
+        # Add each library's headers directory for header detection
+        for name in ('SDL2', 'SDL2_ttf', 'SDL2_image', 'SDL2_mixer'):
+            headers_path = join(root, 'dist', 'include', name)
+            if not exists(headers_path):
+                print('Missing headers {}'.format(headers_path))
+                continue
+            sdl2_flags['include_dirs'].append(headers_path)
+            print('Found SDL2 headers: {}'.format(headers_path))
+
+        # Add library directory for current ABI only
+        lib_dir = join(root, 'dist', 'libs', current_abi)
+        if exists(lib_dir):
+            sdl2_flags['library_dirs'].append(lib_dir)
+            print('Found SDL2 libraries for {}: {}'.format(current_abi, lib_dir))
+
+        sdl2_source = 'android-prebuilt'
 
 
 # -----------------------------------------------------------------------------
@@ -622,6 +814,17 @@ def determine_base_flags():
         'extra_compile_args': []}
     if c_options['use_ios']:
         sysroot = environ.get('IOSSDKROOT', environ.get('SDKROOT'))
+        if not sysroot:
+            import subprocess
+            from platform import ios_ver
+            sdk = 'iphonesimulator' if ios_ver().is_simulator else 'iphoneos'
+            try:
+                sysroot = subprocess.check_output(
+                    ['xcrun', '--sdk', sdk, '--show-sdk-path'],
+                    stderr=subprocess.DEVNULL,
+                    text=True).strip() or None
+            except Exception:
+                pass
         if not sysroot:
             raise Exception('IOSSDKROOT is not set')
         flags['include_dirs'] += [sysroot]
@@ -683,8 +886,17 @@ def determine_gl_flags():
         flags['library_dirs'] = ['/usr/X11R6/lib']
         flags['libraries'] = ['GL']
     elif platform == 'android':
-        flags['include_dirs'] = [join(ndkplatform, 'usr', 'include')]
-        flags['library_dirs'] = [join(ndkplatform, 'usr', 'lib')]
+        ndk_home = environ.get('ANDROID_NDK_HOME', '')
+        if ndkplatform:
+            _sysroot = ndkplatform
+        elif ndk_home:
+            _host_tag = 'darwin-x86_64' if sys.platform == 'darwin' else 'linux-x86_64'
+            _sysroot = join(ndk_home, 'toolchains', 'llvm', 'prebuilt', _host_tag, 'sysroot')
+        else:
+            _sysroot = None
+        if _sysroot:
+            flags['include_dirs'] = [join(_sysroot, 'usr', 'include')]
+            flags['library_dirs'] = [join(_sysroot, 'usr', 'lib')]
         flags['libraries'] = ['GLESv2']
     elif platform == 'rpi':
 
@@ -739,6 +951,12 @@ def determine_sdl2():
     # configure sdl2 via libs.
     # TODO: Move framework configuration here.
     if sdl2_source == "macos-frameworks":
+        return sdl2_flags
+
+    if platform == "ios":
+        return sdl2_flags
+
+    if platform == "android":
         return sdl2_flags
 
     default_sdl2_path = None
@@ -939,13 +1157,24 @@ if c_options['use_sdl2'] and sdl2_flags:
     sources['graphics/cgl_backend/cgl_sdl2.pyx'] = merge(
         sources['graphics/cgl_backend/cgl_sdl2.pyx'], sdl2_flags)
     sdl2_depends = {'depends': ['lib/sdl2.pxi']}
+    if platform in ('ios', 'darwin'):
+        _extra_args_c = {
+            'extra_compile_args': ['-ObjC'],
+        }
+        _extra_args_cpp = {
+            'extra_compile_args': ['-ObjC++'],
+        }
+    else:
+        _extra_args_c = {}
+        _extra_args_cpp = {}
     for source_file in ('core/window/_window_sdl2.pyx',
-                        'core/image/_img_sdl2.pyx',
                         'core/text/_text_sdl2.pyx',
                         'core/audio/audio_sdl2.pyx',
                         'core/clipboard/_clipboard_sdl2.pyx'):
         sources[source_file] = merge(
-            base_flags, sdl2_flags, sdl2_depends)
+            base_flags, sdl2_flags, sdl2_depends, _extra_args_c)
+    sources['core/image/_img_sdl2.pyx'] = merge(
+        base_flags, sdl2_flags, sdl2_depends, _extra_args_cpp)
 
 if c_options['use_pangoft2'] in (None, True) and platform not in (
                                       'android', 'ios', 'win32'):
@@ -978,17 +1207,20 @@ if platform in ('darwin', 'ios'):
         base_flags, osx_flags)
 
 if c_options['use_avfoundation']:
-    import platform as _platform
-    mac_ver = [int(x) for x in _platform.mac_ver()[0].split('.')[:2]]
-    if mac_ver >= [10, 7] or platform == 'ios':
-        osx_flags = {
-            'extra_link_args': ['-framework', 'AVFoundation'],
-            'extra_compile_args': ['-ObjC++'],
-            'depends': ['core/camera/camera_avfoundation_implem.m']}
-        sources['core/camera/camera_avfoundation.pyx'] = merge(
-            base_flags, osx_flags)
-    else:
-        print('AVFoundation cannot be used, OSX >= 10.7 is required')
+    osx_flags = {
+        'extra_link_args': [
+            '-framework', 'AVFoundation',
+            '-framework', 'Foundation',
+            '-framework', 'UIKit',
+            '-framework', 'CoreGraphics',
+            '-framework', 'CoreMedia',
+            '-framework', 'CoreVideo',
+            '-lobjc',
+        ],
+        'extra_compile_args': ['-ObjC++'],
+        'c_depends': ['core/camera/camera_avfoundation_implem.mm']}
+    sources['core/camera/camera_avfoundation.pyx'] = merge(
+        base_flags, osx_flags)
 
 if c_options['use_rpi_vidcore_lite']:
 
