@@ -18,6 +18,18 @@ markers = "incremental: mark a test as incremental."
 
 
 
+[tool.cibuildwheel]
+build = "cp313-* cp314-*"
+
+[tool.cibuildwheel.macos]
+before-all = " $(pwd)/tools/build_macos_dependencies.sh"
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} --ignore-missing-dependencies -w {dest_dir} -v {wheel}"
+
+[tool.cibuildwheel.macos.environment]
+KIVY_DEPS_ROOT = "$(pwd)/kivy-dependencies"
+KIVY_SPLIT_EXAMPLES = "1"
+MACOSX_DEPLOYMENT_TARGET = "10.15"
+
 [tool.cibuildwheel.android]
 #repair-wheel-command = "cp {wheel} {dest_dir}/"
 before-all = " $(pwd)/tools/build_android_dependencies.sh"

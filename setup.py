@@ -224,10 +224,10 @@ if platform == 'ios':
     sdl2_mixer_headers = join(sdl2_mixer_fw, 'Headers')
     sdl2_ttf_headers = join(sdl2_ttf_fw, 'Headers')
 
-    #egl_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libEGL.xcframework')
+    egl_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libEGL.xcframework')
     gles_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libGLESv2.xcframework')
 
-    #egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
+    egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
     gles_fw = join(gles_xc, plat_arch, 'libGLESv2.framework')
 
     egl_headers = join(KIVY_DEPS_ROOT, 'dist', 'include')
@@ -253,11 +253,11 @@ if platform == 'ios':
             'headers': sdl2_ttf_headers,
             'xc': sdl2_ttf_xc,
         },
-        # 'EGL': {
-        #     'path': egl_fw,
-        #     'headers': egl_headers,
-        #     'xc': egl_xc,
-        # },
+        'EGL': {
+            'path': egl_fw,
+            'headers': egl_headers,
+            'xc': egl_xc,
+        },
         'GLESv2': {
             'path': gles_fw,
             'headers': "",
@@ -323,6 +323,11 @@ c_options['use_wayland'] = False
 c_options['use_gstreamer'] = None
 c_options['use_avfoundation'] = platform in ['darwin', 'ios']
 c_options['use_osx_frameworks'] = platform == 'darwin'
+c_options['use_angle_gl_backend'] = platform == 'ios' or (
+    platform == 'darwin' and bool(
+        KIVY_DEPS_ROOT or environ.get('KIVY_ANGLE_INCLUDE_DIR')
+    )
+)
 c_options['debug_gl'] = False
 
 # Set the alpha size, this will be 0 on the Raspberry Pi and 8 on all other
@@ -864,6 +869,27 @@ def determine_base_flags():
     return flags
 
 
+def determine_angle_flags():
+    flags = {'include_dirs': [], 'libraries': []}
+    default_include_dir = ""
+    default_lib_dir = ""
+    if KIVY_DEPS_ROOT:
+        default_include_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "include")
+        default_lib_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "lib")
+    kivy_angle_include_dir = environ.get("KIVY_ANGLE_INCLUDE_DIR", default_include_dir)
+    kivy_angle_lib_dir = environ.get("KIVY_ANGLE_LIB_DIR", default_lib_dir)
+    if platform == "darwin":
+        flags['libraries'] = ['EGL', 'GLESv2']
+        flags['library_dirs'] = [kivy_angle_lib_dir]
+        flags['include_dirs'] = [kivy_angle_include_dir]
+        flags['extra_link_args'] = ["-Wl,-rpath,{}".format(kivy_angle_lib_dir)]
+    elif platform == "ios":
+        flags['include_dirs'] = [kivy_angle_include_dir]
+    else:
+        raise Exception("ANGLE is not supported on this platform")
+    return flags
+
+
 def determine_gl_flags():
     kivy_graphics_include = join(src_path, 'kivy', 'include')
     flags = {'include_dirs': [kivy_graphics_include], 'libraries': []}
@@ -872,6 +898,8 @@ def determine_gl_flags():
 
     if c_options['use_opengl_mock']:
         return flags, base_flags
+    if c_options['use_angle_gl_backend']:
+        return determine_angle_flags(), base_flags
     if platform == 'win32':
         flags['libraries'] = ['opengl32', 'glew32']
     elif platform == 'ios':
@@ -1132,6 +1160,8 @@ sources = {
     'graphics/cgl_backend/cgl_glew.pyx': merge(base_flags, gl_flags),
     'graphics/cgl_backend/cgl_sdl2.pyx': merge(base_flags, gl_flags_base),
     'graphics/cgl_backend/cgl_debug.pyx': merge(base_flags, gl_flags_base),
+    'graphics/cgl_backend/cgl_angle.pyx': merge(base_flags, gl_flags),
+    'graphics/egl_backend/egl_angle.pyx': merge(base_flags, gl_flags),
     'core/text/text_layout.pyx': base_flags,
     'core/window/window_info.pyx': base_flags,
     'graphics/tesselator.pyx': merge(base_flags, {
@@ -1149,6 +1179,12 @@ sources = {
     'graphics/svg.pyx': merge(base_flags, gl_flags_base),
     'graphics/boxshadow.pyx': merge(base_flags, gl_flags_base)
 }
+
+if c_options['use_angle_gl_backend'] and platform == 'ios':
+    # cgl_gl and cgl_glew use native OpenGL ES symbols that aren't available
+    # as link-time symbols on iOS; exclude them since cgl_angle is used instead
+    del sources['graphics/cgl_backend/cgl_gl.pyx']
+    del sources['graphics/cgl_backend/cgl_glew.pyx']
 
 if c_options["use_sdl2"]:
     sdl2_flags = determine_sdl2()
@@ -1206,17 +1242,63 @@ if platform in ('darwin', 'ios'):
     sources['core/image/img_imageio.pyx'] = merge(
         base_flags, osx_flags)
 
-if c_options['use_avfoundation']:
-    osx_flags = {
+if c_options['use_angle_gl_backend']:
+    angle_metal_flags = {
         'extra_link_args': [
-            '-framework', 'AVFoundation',
+            '-framework', 'Metal',
+            '-framework', 'QuartzCore',
             '-framework', 'Foundation',
-            '-framework', 'UIKit',
-            '-framework', 'CoreGraphics',
-            '-framework', 'CoreMedia',
-            '-framework', 'CoreVideo',
-            '-lobjc',
         ],
+        'extra_compile_args': ['-ObjC++'],
+        'c_depends': ['graphics/egl_backend/egl_angle_metal_implem.mm'],
+    }
+    if platform == 'darwin':
+        angle_metal_flags['extra_link_args'] += ['-lEGL', '-lGLESv2']
+    elif platform == 'ios':
+        ios_frameworks = plat_options['ios']['frameworks']
+        egl_fw_info = ios_frameworks['EGL']
+        gles_fw_info = ios_frameworks.get('GLESv2') or ios_frameworks.get('GLES')
+        # ANGLE xcframework requires iOS 16.0+; override the default 13.0
+        ios_angle_link_args = [
+            '-framework', 'libEGL',
+            '-F', dirname(egl_fw_info['path']),
+            '-mios-version-min=16.0',
+        ]
+        if gles_fw_info:
+            ios_angle_link_args += [
+                '-framework', 'libGLESv2',
+                '-F', dirname(gles_fw_info['path']),
+            ]
+        angle_metal_flags['extra_link_args'] += ios_angle_link_args
+        # cgl_angle and egl_angle also need libEGL for eglGetProcAddress
+        sources['graphics/cgl_backend/cgl_angle.pyx'] = merge(
+            sources['graphics/cgl_backend/cgl_angle.pyx'],
+            {'extra_link_args': ios_angle_link_args}
+        )
+        sources['graphics/egl_backend/egl_angle.pyx'] = merge(
+            sources['graphics/egl_backend/egl_angle.pyx'],
+            {'extra_link_args': ios_angle_link_args}
+        )
+    sources['graphics/egl_backend/egl_angle_metal.pyx'] = merge(
+        base_flags, gl_flags, angle_metal_flags)
+    sources['graphics/egl_backend/egl_angle.pyx'] = merge(
+        sources['graphics/egl_backend/egl_angle.pyx'],
+        {'extra_compile_args': ['-ObjC++']}
+    )
+
+if c_options['use_avfoundation']:
+    _avf_link_args = [
+        '-framework', 'AVFoundation',
+        '-framework', 'Foundation',
+        '-framework', 'CoreGraphics',
+        '-framework', 'CoreMedia',
+        '-framework', 'CoreVideo',
+        '-lobjc',
+    ]
+    if platform == 'ios':
+        _avf_link_args += ['-framework', 'UIKit']
+    osx_flags = {
+        'extra_link_args': _avf_link_args,
         'extra_compile_args': ['-ObjC++'],
         'c_depends': ['core/camera/camera_avfoundation_implem.mm']}
     sources['core/camera/camera_avfoundation.pyx'] = merge(
