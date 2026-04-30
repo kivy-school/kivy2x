@@ -35,7 +35,7 @@ MACOSX_DEPLOYMENT_TARGET = "10.15"
 before-all = " $(pwd)/tools/build_android_dependencies.sh"
 
 [tool.cibuildwheel.android.environment]
-ANDROID_NDK_HOME = "/Volumes/CodeSSD/thorvg-development/kivy-thor-games/kivy-thor-games/.psproject/android-sdk/ndk/27.3.13750724"
+#ANDROID_NDK_HOME = "/Volumes/CodeSSD/thorvg-development/kivy-thor-games/kivy-thor-games/.psproject/android-sdk/ndk/27.3.13750724"
 ANDROID_API_LEVEL = "24"
 KIVY_DEPS_ROOT = "$(pwd)/android-kivy-dependencies"
 KIVY_SPLIT_EXAMPLES = "1"
