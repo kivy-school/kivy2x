@@ -90,3 +90,4 @@ android-kivy-dependencies/
 wheelhouse/
 kivy/graphics/egl_backend/egl_angle_metal.cpp
 kivy/graphics/egl_backend/egl_angle.c
+uv.lock

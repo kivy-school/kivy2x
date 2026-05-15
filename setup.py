@@ -24,6 +24,7 @@ import tempfile
 
 from setuptools import Distribution, Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.build_py import build_py
 
 if sys.version_info[0] == 2:
     logging.critical(
@@ -371,8 +372,6 @@ can_use_cython = True
 
 # the build path where kivy is being compiled
 src_path = build_path = dirname(__file__)
-print("Current directory is: {}".format(os.getcwd()))
-print("Source and initial build directory is: {}".format(src_path))
 
 # __version__ is imported by exec, but help linter not complain
 __version__ = None
@@ -463,6 +462,17 @@ class KivyBuildExt(build_ext, object):
 
         super().build_extensions()
 
+    def run(self):
+        # Cython replaces .pyx sources with absolute .c paths; recent
+        # setuptools rejects absolute paths in check_extensions_list.
+        # Normalize to relative before super().run() calls that check.
+        for ext in (self.extensions or []):
+            ext.sources = [
+                os.path.relpath(s) if os.path.isabs(s) else s
+                for s in (ext.sources or [])
+            ]
+        super().run()
+
     def update_if_changed(self, fn, content):
         need_update = True
         if exists(fn):
@@ -475,6 +485,17 @@ class KivyBuildExt(build_ext, object):
             with open(fn, 'w') as fd:
                 fd.write(content)
         return need_update
+
+
+class KivyBuildPy(build_py):
+    def run(self):
+        super().run()
+        # Remove .c files from the build lib - they are compilation inputs,
+        # not runtime files, and must not appear in the installed wheel.
+        for root, dirs, files in os.walk(self.build_lib):
+            for fname in files:
+                if fname.endswith('.c'):
+                    os.remove(os.path.join(root, fname))
 
 
 def _check_and_fix_sdl2_mixer(f_path):
@@ -526,6 +547,7 @@ cython_min_msg, cython_max_msg, cython_unsupported_msg = get_cython_msg()
 
 if can_use_cython:
     import Cython
+    from Cython.Build import cythonize
     from packaging import version
     print('\nFound Cython at', Cython.__file__)
 
@@ -548,7 +570,8 @@ if can_use_cython:
 from kivy.tools.packaging.factory import FactoryBuild
 cmdclass = {
     'build_factory': FactoryBuild,
-    'build_ext': KivyBuildExt}
+    'build_ext': KivyBuildExt,
+    'build_py': KivyBuildPy}
 
 try:
     # add build rules for portable packages to cmdclass
@@ -1417,6 +1440,81 @@ def get_extensions_from_sources(sources):
 
 ext_modules = get_extensions_from_sources(sources)
 
+# Bundle android package when building for android
+if platform == 'android':
+    _android_dir = 'extra/android/src/android'
+    _cmake_toolchain = environ.get('CMAKE_TOOLCHAIN_FILE', '')
+    _bootstrap = environ.get('BOOTSTRAP', 'sdl2')
+
+    # Generate config files (mirrors extra/android/setup.py _generate_config)
+    if _cmake_toolchain:
+        _cross_lib_dir = str(Path(_cmake_toolchain).parent / 'python' / 'prefix' / 'lib')
+        _activity = environ.get('ACTIVITY_CLASS_NAME', 'org.kivy.android.PythonActivity')
+        _service = environ.get('SERVICE_CLASS_NAME', 'org.kivy.android.PythonService')
+        _cfg = {
+            'BOOTSTRAP': _bootstrap,
+            'IS_SDL2': int(_bootstrap == 'sdl2'),
+            'IS_SDL3': int(_bootstrap == 'sdl3'),
+            'PY2': 0,
+            'ANDROID_LIBS_DIR': _cross_lib_dir,
+            'JAVA_NAMESPACE': 'org.kivy.android',
+            'JNI_NAMESPACE': 'org/kivy/android',
+            'ACTIVITY_CLASS_NAME': _activity,
+            'ACTIVITY_CLASS_NAMESPACE': _activity.replace('.', '/'),
+            'SERVICE_CLASS_NAME': _service,
+        }
+        with (
+            open(join(_android_dir, 'config.pxi'), 'w') as _fpxi,
+            open(join(_android_dir, 'config.h'), 'w') as _fh,
+            open(join(_android_dir, 'config.py'), 'w') as _fpy,
+        ):
+            for _k, _v in _cfg.items():
+                _fpxi.write(f'DEF {_k} = {_v!r}\n')
+                _fpy.write(f'{_k} = {_v!r}\n')
+                if isinstance(_v, int):
+                    _fh.write(f'#define {_k} {_v}\n')
+                else:
+                    _fh.write(f'#define {_k} "{_v}"\n')
+            if _bootstrap == 'sdl2':
+                _fh.write('JNIEnv *SDL_AndroidGetJNIEnv(void);\n')
+                _fh.write('#define SDL_ANDROID_GetJNIEnv SDL_AndroidGetJNIEnv\n')
+            else:
+                _fh.write('JNIEnv *SDL_GetAndroidJNIEnv(void);\n')
+                _fh.write('#define SDL_ANDROID_GetJNIEnv SDL_GetAndroidJNIEnv\n')
+
+    _library_dirs = sdl2_flags.get('library_dirs', [])
+    _sdl = 'SDL2' if _bootstrap == 'sdl2' else 'SDL3'
+    _sdl_libs = [_sdl, _sdl + '_image', _sdl + '_mixer', _sdl + '_ttf']
+
+    ext_modules += cythonize(
+        [
+            Extension(
+                'android._android',
+                [join(_android_dir, '_android.pyx'), join(_android_dir, '_android_jni.c')],
+                libraries=_sdl_libs + ['log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+            ),
+            Extension(
+                'android._android_billing',
+                [join(_android_dir, '_android_billing.pyx'), join(_android_dir, '_android_billing_jni.c')],
+                libraries=[_sdl, 'log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+            ),
+            Extension(
+                'android._android_sound',
+                [join(_android_dir, '_android_sound.pyx'), join(_android_dir, '_android_sound_jni.c')],
+                libraries=[_sdl, 'log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+                extra_compile_args=['-include', 'stdlib.h'],
+            ),
+        ],
+        compiler_directives={'language_level': '3'},
+        include_path=[_android_dir],
+    )
+
 
 # -----------------------------------------------------------------------------
 # automatically detect data files
@@ -1458,6 +1556,16 @@ def glob_paths(*patterns, excludes=('.pyc', )):
     return files
 
 
+# Normalize absolute extension source paths to relative before setup() is
+# called so that egg_info writes relative paths into SOURCES.txt; modern
+# setuptools' build_py.analyze_manifest() rejects absolute paths.
+for _ext in ext_modules:
+    _ext.sources = [
+        os.path.relpath(s) if os.path.isabs(s) else s
+        for s in (_ext.sources or [])
+    ]
+
+
 # -----------------------------------------------------------------------------
 # setup !
 if not build_examples:
@@ -1481,8 +1589,9 @@ if not build_examples:
         long_description_content_type='text/markdown',
         ext_modules=ext_modules,
         cmdclass=cmdclass,
-        packages=find_packages(include=['kivy*']),
-        package_dir={'kivy': 'kivy'},
+        packages=find_packages(include=['kivy*']) + (['android'] if platform == 'android' else []),
+        package_dir={'kivy': 'kivy', **({'android': 'extra/android/src/android'} if platform == 'android' else {})},
+        exclude_package_data={'': ['*.c']},
         package_data={
             'kivy':
                 glob_paths('*.pxd', '*.pxi') +
