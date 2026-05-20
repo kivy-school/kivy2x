@@ -70,6 +70,44 @@ def add_android_libs_to_wheels(wheels_path: str):
                 print("  Adding {} as {}".format(so_file, arcname))
                 whl.write(file_path, arcname)
 
+            # Inject SDL2 Java sources under .java/ (mirrors .libs/ layout).
+            # ABI-independent, so we add the whole tree once per wheel.
+            java_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "java")
+            if os.path.isdir(java_dir):
+                print("Adding Android Java sources to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(java_dir):
+                    for fname in files:
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, java_dir)
+                        arcname = os.path.join(".java", rel)
+                        print("  Adding {} as {}".format(rel, arcname))
+                        whl.write(file_path, arcname)
+            else:
+                print(
+                    "No Java sources found at {}, skipping .java/ injection".format(
+                        java_dir
+                    )
+                )
+
+            # Inject SDL2 headers under .include/ (mirrors .libs/ / .java/ layout).
+            # ABI-independent, so we add the whole tree once per wheel.
+            include_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "include")
+            if os.path.isdir(include_dir):
+                print("Adding Android SDL headers to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(include_dir):
+                    for fname in files:
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, include_dir)
+                        arcname = os.path.join(".include", rel)
+                        print("  Adding {} as {}".format(rel, arcname))
+                        whl.write(file_path, arcname)
+            else:
+                print(
+                    "No headers found at {}, skipping .include/ injection".format(
+                        include_dir
+                    )
+                )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
