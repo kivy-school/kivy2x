@@ -24,6 +24,19 @@ IOS__SDL2_TTF__VERSION="2.22.0"
 IOS__SDL2_TTF__URL="https://github.com/libsdl-org/SDL_ttf/releases/download/release-${IOS__SDL2_TTF__VERSION}/SDL2_ttf-${IOS__SDL2_TTF__VERSION}.tar.gz"
 IOS__SDL2_TTF__FOLDER="SDL2_ttf-${IOS__SDL2_TTF__VERSION}"
 
+# Skip rebuild if all xcframeworks are already present (set FORCE_REBUILD=1 to override)
+_DIST_FW="ios-kivy-dependencies/dist/Frameworks"
+if [ -z "${FORCE_REBUILD:-}" ] && \
+   [ -d "$_DIST_FW/SDL2.xcframework" ] && \
+   [ -d "$_DIST_FW/SDL2_image.xcframework" ] && \
+   [ -d "$_DIST_FW/SDL2_mixer.xcframework" ] && \
+   [ -d "$_DIST_FW/SDL2_ttf.xcframework" ] && \
+   [ -d "$_DIST_FW/libEGL.xcframework" ] && \
+   [ -d "$_DIST_FW/libGLESv2.xcframework" ]; then
+    echo "iOS dependencies already present, skipping rebuild. Set FORCE_REBUILD=1 to force."
+    exit 0
+fi
+
 # Clean the dependencies folder
 rm -rf ios-kivy-dependencies
 

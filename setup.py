@@ -527,6 +527,20 @@ class KivyBuildExt(build_ext, object):
 
 class KivyBuildPy(build_py):
     def run(self):
+        # Normalize absolute paths in a stale SOURCES.txt before build_py
+        # reads it — setuptools' assert_relative() rejects absolute paths.
+        egg_info_dir = getattr(self, 'existing_egg_info_dir', None)
+        if egg_info_dir:
+            sources_txt = join(egg_info_dir, 'SOURCES.txt')
+            if exists(sources_txt):
+                lines = open(sources_txt).read().splitlines()
+                if any(os.path.isabs(l) for l in lines):
+                    normalized = [
+                        os.path.relpath(l, src_path) if os.path.isabs(l) else l
+                        for l in lines
+                    ]
+                    with open(sources_txt, 'w') as f:
+                        f.write('\n'.join(normalized) + '\n')
         super().run()
         # Remove .c files from the build lib - they are compilation inputs,
         # not runtime files, and must not appear in the installed wheel.
@@ -1599,8 +1613,12 @@ def glob_paths(*patterns, excludes=('.pyc', )):
 # setuptools' build_py.analyze_manifest() rejects absolute paths.
 for _ext in ext_modules:
     _ext.sources = [
-        os.path.relpath(s) if os.path.isabs(s) else s
+        os.path.relpath(s, src_path) if os.path.isabs(s) else s
         for s in (_ext.sources or [])
+    ]
+    _ext.depends = [
+        os.path.relpath(s, src_path) if os.path.isabs(s) else s
+        for s in (_ext.depends or [])
     ]
 
 

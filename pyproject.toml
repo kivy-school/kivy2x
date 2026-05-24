@@ -1,6 +1,6 @@
 [project]
 name = "Kivy"
-version = "2.3.1"
+version = "2.3.1.post1"
 description = "An open-source Python framework for developing GUI apps that work cross-platform, including desktop, mobile and embedded platforms."
 readme = "README.md"
 license = { text = "MIT" }
