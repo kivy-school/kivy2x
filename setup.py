@@ -12,6 +12,7 @@ if "--build_examples" in sys.argv:
 from kivy.utils import pi_version
 from copy import deepcopy
 import os
+import shutil
 from os.path import join, dirname, exists, basename, isdir
 from os import walk, environ, makedirs
 from collections import OrderedDict
@@ -24,6 +25,7 @@ import tempfile
 
 from setuptools import Distribution, Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.build_py import build_py
 
 if sys.version_info[0] == 2:
     logging.critical(
@@ -54,6 +56,33 @@ def getoutput(cmd, env=None):
             print('{0}\n'.format(stderr_content))
         return ""
     return p.stdout.read()
+
+
+def _fix_ios_angle_framework_install_name(fw_path, fw_name):
+    """Patch ANGLE framework install name to @rpath/Frameworks/... (iOS requirement)."""
+    binary = join(fw_path, fw_name)
+    if not exists(binary):
+        return
+    new_id = '@rpath/Frameworks/{}.framework/{}'.format(fw_name, fw_name)
+    current_id = getoutput('otool -D "{}"'.format(binary))
+    if isinstance(current_id, bytes):
+        current_id = current_id.decode('utf-8')
+    if new_id in current_id:
+        return
+    print('Fixing ANGLE install name for {}: {}'.format(fw_name, new_id))
+    getoutput('install_name_tool -id "{}" "{}"'.format(new_id, binary))
+
+
+def _populate_ios_egl_framework_headers(fw_path, src_include_dir):
+    """Copy EGL/GLES2/KHR headers into the framework's Headers/ directory."""
+    headers_dir = join(fw_path, 'Headers')
+    if not exists(headers_dir):
+        makedirs(headers_dir)
+    for subdir in ('EGL', 'GLES2', 'KHR'):
+        src = join(src_include_dir, subdir)
+        dst = join(headers_dir, subdir)
+        if exists(src) and not exists(dst):
+            shutil.copytree(src, dst)
 
 
 def pkgconfig(*packages, **kw):
@@ -224,13 +253,23 @@ if platform == 'ios':
     sdl2_mixer_headers = join(sdl2_mixer_fw, 'Headers')
     sdl2_ttf_headers = join(sdl2_ttf_fw, 'Headers')
 
-    #egl_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libEGL.xcframework')
+    egl_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libEGL.xcframework')
     gles_xc = join(KIVY_DEPS_ROOT, 'dist', 'Frameworks', 'libGLESv2.xcframework')
 
-    #egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
+    egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
     gles_fw = join(gles_xc, plat_arch, 'libGLESv2.framework')
 
-    egl_headers = join(KIVY_DEPS_ROOT, 'dist', 'include')
+    _fix_ios_angle_framework_install_name(egl_fw, 'libEGL')
+    _fix_ios_angle_framework_install_name(gles_fw, 'libGLESv2')
+
+    _src_include = join(KIVY_DEPS_ROOT, 'dist', 'include')
+    for _slice in os.listdir(egl_xc):
+        if _slice == 'Info.plist':
+            continue
+        _populate_ios_egl_framework_headers(
+            join(egl_xc, _slice, 'libEGL.framework'), _src_include)
+
+    egl_headers = join(egl_fw, 'Headers')
 
     ios_data['frameworks'] = {
         'SDL2': {
@@ -253,11 +292,11 @@ if platform == 'ios':
             'headers': sdl2_ttf_headers,
             'xc': sdl2_ttf_xc,
         },
-        # 'EGL': {
-        #     'path': egl_fw,
-        #     'headers': egl_headers,
-        #     'xc': egl_xc,
-        # },
+        'EGL': {
+            'path': egl_fw,
+            'headers': egl_headers,
+            'xc': egl_xc,
+        },
         'GLESv2': {
             'path': gles_fw,
             'headers': "",
@@ -323,6 +362,11 @@ c_options['use_wayland'] = False
 c_options['use_gstreamer'] = None
 c_options['use_avfoundation'] = platform in ['darwin', 'ios']
 c_options['use_osx_frameworks'] = platform == 'darwin'
+c_options['use_angle_gl_backend'] = platform == 'ios' or (
+    platform == 'darwin' and bool(
+        KIVY_DEPS_ROOT or environ.get('KIVY_ANGLE_INCLUDE_DIR')
+    )
+)
 c_options['debug_gl'] = False
 
 # Set the alpha size, this will be 0 on the Raspberry Pi and 8 on all other
@@ -366,8 +410,6 @@ can_use_cython = True
 
 # the build path where kivy is being compiled
 src_path = build_path = dirname(__file__)
-print("Current directory is: {}".format(os.getcwd()))
-print("Source and initial build directory is: {}".format(src_path))
 
 # __version__ is imported by exec, but help linter not complain
 __version__ = None
@@ -458,6 +500,17 @@ class KivyBuildExt(build_ext, object):
 
         super().build_extensions()
 
+    def run(self):
+        # Cython replaces .pyx sources with absolute .c paths; recent
+        # setuptools rejects absolute paths in check_extensions_list.
+        # Normalize to relative before super().run() calls that check.
+        for ext in (self.extensions or []):
+            ext.sources = [
+                os.path.relpath(s) if os.path.isabs(s) else s
+                for s in (ext.sources or [])
+            ]
+        super().run()
+
     def update_if_changed(self, fn, content):
         need_update = True
         if exists(fn):
@@ -470,6 +523,17 @@ class KivyBuildExt(build_ext, object):
             with open(fn, 'w') as fd:
                 fd.write(content)
         return need_update
+
+
+class KivyBuildPy(build_py):
+    def run(self):
+        super().run()
+        # Remove .c files from the build lib - they are compilation inputs,
+        # not runtime files, and must not appear in the installed wheel.
+        for root, dirs, files in os.walk(self.build_lib):
+            for fname in files:
+                if fname.endswith('.c'):
+                    os.remove(os.path.join(root, fname))
 
 
 def _check_and_fix_sdl2_mixer(f_path):
@@ -521,6 +585,7 @@ cython_min_msg, cython_max_msg, cython_unsupported_msg = get_cython_msg()
 
 if can_use_cython:
     import Cython
+    from Cython.Build import cythonize
     from packaging import version
     print('\nFound Cython at', Cython.__file__)
 
@@ -543,7 +608,8 @@ if can_use_cython:
 from kivy.tools.packaging.factory import FactoryBuild
 cmdclass = {
     'build_factory': FactoryBuild,
-    'build_ext': KivyBuildExt}
+    'build_ext': KivyBuildExt,
+    'build_py': KivyBuildPy}
 
 try:
     # add build rules for portable packages to cmdclass
@@ -864,6 +930,27 @@ def determine_base_flags():
     return flags
 
 
+def determine_angle_flags():
+    flags = {'include_dirs': [], 'libraries': []}
+    default_include_dir = ""
+    default_lib_dir = ""
+    if KIVY_DEPS_ROOT:
+        default_include_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "include")
+        default_lib_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "lib")
+    kivy_angle_include_dir = environ.get("KIVY_ANGLE_INCLUDE_DIR", default_include_dir)
+    kivy_angle_lib_dir = environ.get("KIVY_ANGLE_LIB_DIR", default_lib_dir)
+    if platform == "darwin":
+        flags['libraries'] = ['EGL', 'GLESv2']
+        flags['library_dirs'] = [kivy_angle_lib_dir]
+        flags['include_dirs'] = [kivy_angle_include_dir]
+        flags['extra_link_args'] = ["-Wl,-rpath,{}".format(kivy_angle_lib_dir)]
+    elif platform == "ios":
+        flags['include_dirs'] = [kivy_angle_include_dir]
+    else:
+        raise Exception("ANGLE is not supported on this platform")
+    return flags
+
+
 def determine_gl_flags():
     kivy_graphics_include = join(src_path, 'kivy', 'include')
     flags = {'include_dirs': [kivy_graphics_include], 'libraries': []}
@@ -872,6 +959,8 @@ def determine_gl_flags():
 
     if c_options['use_opengl_mock']:
         return flags, base_flags
+    if c_options['use_angle_gl_backend']:
+        return determine_angle_flags(), base_flags
     if platform == 'win32':
         flags['libraries'] = ['opengl32', 'glew32']
     elif platform == 'ios':
@@ -1132,6 +1221,8 @@ sources = {
     'graphics/cgl_backend/cgl_glew.pyx': merge(base_flags, gl_flags),
     'graphics/cgl_backend/cgl_sdl2.pyx': merge(base_flags, gl_flags_base),
     'graphics/cgl_backend/cgl_debug.pyx': merge(base_flags, gl_flags_base),
+    'graphics/cgl_backend/cgl_angle.pyx': merge(base_flags, gl_flags),
+    'graphics/egl_backend/egl_angle.pyx': merge(base_flags, gl_flags),
     'core/text/text_layout.pyx': base_flags,
     'core/window/window_info.pyx': base_flags,
     'graphics/tesselator.pyx': merge(base_flags, {
@@ -1149,6 +1240,12 @@ sources = {
     'graphics/svg.pyx': merge(base_flags, gl_flags_base),
     'graphics/boxshadow.pyx': merge(base_flags, gl_flags_base)
 }
+
+if c_options['use_angle_gl_backend'] and platform == 'ios':
+    # cgl_gl and cgl_glew use native OpenGL ES symbols that aren't available
+    # as link-time symbols on iOS; exclude them since cgl_angle is used instead
+    del sources['graphics/cgl_backend/cgl_gl.pyx']
+    del sources['graphics/cgl_backend/cgl_glew.pyx']
 
 if c_options["use_sdl2"]:
     sdl2_flags = determine_sdl2()
@@ -1206,17 +1303,63 @@ if platform in ('darwin', 'ios'):
     sources['core/image/img_imageio.pyx'] = merge(
         base_flags, osx_flags)
 
-if c_options['use_avfoundation']:
-    osx_flags = {
+if c_options['use_angle_gl_backend']:
+    angle_metal_flags = {
         'extra_link_args': [
-            '-framework', 'AVFoundation',
+            '-framework', 'Metal',
+            '-framework', 'QuartzCore',
             '-framework', 'Foundation',
-            '-framework', 'UIKit',
-            '-framework', 'CoreGraphics',
-            '-framework', 'CoreMedia',
-            '-framework', 'CoreVideo',
-            '-lobjc',
         ],
+        'extra_compile_args': ['-ObjC++'],
+        'c_depends': ['graphics/egl_backend/egl_angle_metal_implem.mm'],
+    }
+    if platform == 'darwin':
+        angle_metal_flags['extra_link_args'] += ['-lEGL', '-lGLESv2']
+    elif platform == 'ios':
+        ios_frameworks = plat_options['ios']['frameworks']
+        egl_fw_info = ios_frameworks['EGL']
+        gles_fw_info = ios_frameworks.get('GLESv2') or ios_frameworks.get('GLES')
+        # ANGLE xcframework requires iOS 16.0+; override the default 13.0
+        ios_angle_link_args = [
+            '-framework', 'libEGL',
+            '-F', dirname(egl_fw_info['path']),
+            '-mios-version-min=16.0',
+        ]
+        if gles_fw_info:
+            ios_angle_link_args += [
+                '-framework', 'libGLESv2',
+                '-F', dirname(gles_fw_info['path']),
+            ]
+        angle_metal_flags['extra_link_args'] += ios_angle_link_args
+        # cgl_angle and egl_angle also need libEGL for eglGetProcAddress
+        sources['graphics/cgl_backend/cgl_angle.pyx'] = merge(
+            sources['graphics/cgl_backend/cgl_angle.pyx'],
+            {'extra_link_args': ios_angle_link_args}
+        )
+        sources['graphics/egl_backend/egl_angle.pyx'] = merge(
+            sources['graphics/egl_backend/egl_angle.pyx'],
+            {'extra_link_args': ios_angle_link_args}
+        )
+    sources['graphics/egl_backend/egl_angle_metal.pyx'] = merge(
+        base_flags, gl_flags, angle_metal_flags)
+    sources['graphics/egl_backend/egl_angle.pyx'] = merge(
+        sources['graphics/egl_backend/egl_angle.pyx'],
+        {'extra_compile_args': ['-ObjC++']}
+    )
+
+if c_options['use_avfoundation']:
+    _avf_link_args = [
+        '-framework', 'AVFoundation',
+        '-framework', 'Foundation',
+        '-framework', 'CoreGraphics',
+        '-framework', 'CoreMedia',
+        '-framework', 'CoreVideo',
+        '-lobjc',
+    ]
+    if platform == 'ios':
+        _avf_link_args += ['-framework', 'UIKit']
+    osx_flags = {
+        'extra_link_args': _avf_link_args,
         'extra_compile_args': ['-ObjC++'],
         'c_depends': ['core/camera/camera_avfoundation_implem.mm']}
     sources['core/camera/camera_avfoundation.pyx'] = merge(
@@ -1335,6 +1478,81 @@ def get_extensions_from_sources(sources):
 
 ext_modules = get_extensions_from_sources(sources)
 
+# Bundle android package when building for android
+if platform == 'android':
+    _android_dir = 'extra/android/src/android'
+    _cmake_toolchain = environ.get('CMAKE_TOOLCHAIN_FILE', '')
+    _bootstrap = environ.get('BOOTSTRAP', 'sdl2')
+
+    # Generate config files (mirrors extra/android/setup.py _generate_config)
+    if _cmake_toolchain:
+        _cross_lib_dir = str(Path(_cmake_toolchain).parent / 'python' / 'prefix' / 'lib')
+        _activity = environ.get('ACTIVITY_CLASS_NAME', 'org.kivy.android.PythonActivity')
+        _service = environ.get('SERVICE_CLASS_NAME', 'org.kivy.android.PythonService')
+        _cfg = {
+            'BOOTSTRAP': _bootstrap,
+            'IS_SDL2': int(_bootstrap == 'sdl2'),
+            'IS_SDL3': int(_bootstrap == 'sdl3'),
+            'PY2': 0,
+            'ANDROID_LIBS_DIR': _cross_lib_dir,
+            'JAVA_NAMESPACE': 'org.kivy.android',
+            'JNI_NAMESPACE': 'org/kivy/android',
+            'ACTIVITY_CLASS_NAME': _activity,
+            'ACTIVITY_CLASS_NAMESPACE': _activity.replace('.', '/'),
+            'SERVICE_CLASS_NAME': _service,
+        }
+        with (
+            open(join(_android_dir, 'config.pxi'), 'w') as _fpxi,
+            open(join(_android_dir, 'config.h'), 'w') as _fh,
+            open(join(_android_dir, 'config.py'), 'w') as _fpy,
+        ):
+            for _k, _v in _cfg.items():
+                _fpxi.write(f'DEF {_k} = {_v!r}\n')
+                _fpy.write(f'{_k} = {_v!r}\n')
+                if isinstance(_v, int):
+                    _fh.write(f'#define {_k} {_v}\n')
+                else:
+                    _fh.write(f'#define {_k} "{_v}"\n')
+            if _bootstrap == 'sdl2':
+                _fh.write('JNIEnv *SDL_AndroidGetJNIEnv(void);\n')
+                _fh.write('#define SDL_ANDROID_GetJNIEnv SDL_AndroidGetJNIEnv\n')
+            else:
+                _fh.write('JNIEnv *SDL_GetAndroidJNIEnv(void);\n')
+                _fh.write('#define SDL_ANDROID_GetJNIEnv SDL_GetAndroidJNIEnv\n')
+
+    _library_dirs = sdl2_flags.get('library_dirs', [])
+    _sdl = 'SDL2' if _bootstrap == 'sdl2' else 'SDL3'
+    _sdl_libs = [_sdl, _sdl + '_image', _sdl + '_mixer', _sdl + '_ttf']
+
+    ext_modules += cythonize(
+        [
+            Extension(
+                'android._android',
+                [join(_android_dir, '_android.pyx'), join(_android_dir, '_android_jni.c')],
+                libraries=_sdl_libs + ['log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+            ),
+            Extension(
+                'android._android_billing',
+                [join(_android_dir, '_android_billing.pyx'), join(_android_dir, '_android_billing_jni.c')],
+                libraries=[_sdl, 'log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+            ),
+            Extension(
+                'android._android_sound',
+                [join(_android_dir, '_android_sound.pyx'), join(_android_dir, '_android_sound_jni.c')],
+                libraries=[_sdl, 'log'],
+                library_dirs=_library_dirs,
+                include_dirs=[_android_dir],
+                extra_compile_args=['-include', 'stdlib.h'],
+            ),
+        ],
+        compiler_directives={'language_level': '3'},
+        include_path=[_android_dir],
+    )
+
 
 # -----------------------------------------------------------------------------
 # automatically detect data files
@@ -1376,6 +1594,16 @@ def glob_paths(*patterns, excludes=('.pyc', )):
     return files
 
 
+# Normalize absolute extension source paths to relative before setup() is
+# called so that egg_info writes relative paths into SOURCES.txt; modern
+# setuptools' build_py.analyze_manifest() rejects absolute paths.
+for _ext in ext_modules:
+    _ext.sources = [
+        os.path.relpath(s) if os.path.isabs(s) else s
+        for s in (_ext.sources or [])
+    ]
+
+
 # -----------------------------------------------------------------------------
 # setup !
 if not build_examples:
@@ -1399,8 +1627,9 @@ if not build_examples:
         long_description_content_type='text/markdown',
         ext_modules=ext_modules,
         cmdclass=cmdclass,
-        packages=find_packages(include=['kivy*']),
-        package_dir={'kivy': 'kivy'},
+        packages=find_packages(include=['kivy*']) + (['android'] if platform == 'android' else []),
+        package_dir={'kivy': 'kivy', **({'android': 'extra/android/src/android'} if platform == 'android' else {})},
+        exclude_package_data={'': ['*.c']},
         package_data={
             'kivy':
                 glob_paths('*.pxd', '*.pxi') +

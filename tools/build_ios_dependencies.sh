@@ -1,5 +1,9 @@
 set -e -x
 
+# ANGLE (pre-built)
+ANGLE__VERSION="chromium-7151_rev1"
+ANGLE__IOS__URL="https://github.com/kivy/angle-builder/releases/download/${ANGLE__VERSION}/angle-iphoneall-universal.tar.gz"
+
 # iOS SDL2
 IOS__SDL2__VERSION="2.28.5"
 IOS__SDL2__URL="https://github.com/libsdl-org/SDL/releases/download/release-${IOS__SDL2__VERSION}/SDL2-${IOS__SDL2__VERSION}.tar.gz"
@@ -34,6 +38,7 @@ curl -L $IOS__SDL2__URL -o "${IOS__SDL2__FOLDER}.tar.gz"
 curl -L $IOS__SDL2_IMAGE__URL -o "${IOS__SDL2_IMAGE__FOLDER}.tar.gz"
 curl -L $IOS__SDL2_MIXER__URL -o "${IOS__SDL2_MIXER__FOLDER}.tar.gz"
 curl -L $IOS__SDL2_TTF__URL -o "${IOS__SDL2_TTF__FOLDER}.tar.gz"
+curl -L $ANGLE__IOS__URL -o "angle-iphoneall-universal.tar.gz"
 popd
 
 # Extract the dependencies into build folder
@@ -152,6 +157,21 @@ xcodebuild -create-xcframework \
 popd
 
 popd
+
+# Download, extract and install ANGLE pre-built xcframeworks
+echo "-- Installing ANGLE for iOS (pre-built)"
+mkdir -p ios-kivy-dependencies/download/angle-ios
+pushd ios-kivy-dependencies/download/angle-ios
+tar -xzf ../angle-iphoneall-universal.tar.gz
+# Copy xcframeworks to dist/Frameworks/
+find . -name "libEGL.xcframework" -exec cp -r {} ../../dist/Frameworks/ \;
+find . -name "libGLESv2.xcframework" -exec cp -r {} ../../dist/Frameworks/ \;
+# Copy headers to dist/include/
+find . -name "*.h" -path "*/EGL/*" | head -1 | xargs -I{} dirname {} | xargs -I{} cp -r {} ../../dist/include/ 2>/dev/null || true
+find . -name "*.h" -path "*/GLES2/*" | head -1 | xargs -I{} dirname {} | xargs -I{} cp -r {} ../../dist/include/ 2>/dev/null || true
+find . -name "khrplatform.h" | head -1 | xargs -I{} dirname {} | xargs -I{} cp -r {} ../../dist/include/ 2>/dev/null || true
+popd
+echo "ANGLE installed to ios-kivy-dependencies/dist/"
 
 echo ""
 echo "iOS SDL2 dependencies built successfully!"

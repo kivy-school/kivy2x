@@ -10,6 +10,9 @@ from kivy.logger import Logger
 from kivy import platform
 from kivy.graphics.cgl cimport *
 
+IF USE_ANGLE_GL_BACKEND:
+    from kivy.graphics.egl_backend.egl_angle cimport EGLANGLE
+
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
 if not environ.get('KIVY_DOC_INCLUDE'):
@@ -35,6 +38,9 @@ cdef class _WindowSDL2Storage:
     cdef SDL_Surface *icon
     cdef int win_flags
     cdef object event_filter
+    cdef str gl_backend_name
+    cdef int sdl_manages_egl_context
+    cdef object egl_angle_storage
 
     def __cinit__(self):
         self.win = NULL
@@ -42,6 +48,8 @@ cdef class _WindowSDL2Storage:
         self.surface = NULL
         self.win_flags = 0
         self.event_filter = None
+        self.gl_backend_name = ""
+        self.sdl_manages_egl_context = 1
 
     def set_event_filter(self, event_filter):
         self.event_filter = event_filter
@@ -76,7 +84,12 @@ cdef class _WindowSDL2Storage:
         raise RuntimeError(<bytes> SDL_GetError())
 
     def setup_window(self, x, y, width, height, borderless, fullscreen, resizable, state, gl_backend):
-        self.win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI
+        self.gl_backend_name = gl_backend
+        self.sdl_manages_egl_context = int(gl_backend != "angle")
+        if self.sdl_manages_egl_context:
+            self.win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI
+        else:
+            self.win_flags = SDL_WINDOW_METAL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI
 
         if resizable:
             self.win_flags |= SDL_WINDOW_RESIZABLE
@@ -138,15 +151,8 @@ cdef class _WindowSDL2Storage:
 
         SDL_SetHint(SDL_HINT_ORIENTATIONS, <bytes>(orientations.encode('utf-8')))
 
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16)
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)
-        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8)
-        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8)
-        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8)
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, KIVY_SDL_GL_ALPHA_SIZE)
-        SDL_GL_SetAttribute(SDL_GL_RETAINED_BACKING, 0)
-        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1)
+        if self.sdl_manages_egl_context:
+            self._set_sdl_gl_common_attributes()
 
         if gl_backend == "angle_sdl2":
             Logger.info("Window: Activate GLES2/ANGLE context")
@@ -234,29 +240,24 @@ cdef class _WindowSDL2Storage:
         if not self.win:
             self.die()
 
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0)
-
-        if gl_backend != "mock":
-            self.ctx = SDL_GL_CreateContext(self.win)
-            if not self.ctx:
-                self.die()
+        self._create_egl_context()
 
         # vsync
-        vsync = Config.get('graphics', 'vsync')
-        if vsync and vsync != 'none':
-            vsync = Config.getint('graphics', 'vsync')
+        if self.sdl_manages_egl_context:
+            vsync = Config.get('graphics', 'vsync')
+            if vsync and vsync != 'none':
+                vsync = Config.getint('graphics', 'vsync')
 
-            Logger.debug(f'WindowSDL: setting vsync interval=={vsync}')
-            res = SDL_GL_SetSwapInterval(vsync)
+                Logger.debug(f'WindowSDL: setting vsync interval=={vsync}')
+                res = SDL_GL_SetSwapInterval(vsync)
 
-            if res == -1:
-                status = ''
-                if vsync not in (0, 1):
-                    res = SDL_GL_SetSwapInterval(1)
-                    status = ', trying fallback to 1: ' + ('failed' if res == -1 else 'succeeded')
+                if res == -1:
+                    status = ''
+                    if vsync not in (0, 1):
+                        res = SDL_GL_SetSwapInterval(1)
+                        status = ', trying fallback to 1: ' + ('failed' if res == -1 else 'succeeded')
 
-                Logger.debug('WindowSDL: requested vsync failed' + status)
+                    Logger.debug('WindowSDL: requested vsync failed' + status)
 
         # Open all available joysticks
         cdef int joy_i
@@ -272,6 +273,46 @@ cdef class _WindowSDL2Storage:
         cdef int w, h
         SDL_GetWindowSize(self.win, &w, &h)
         return w, h
+
+    cdef void _set_sdl_gl_common_attributes(self):
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16)
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, KIVY_SDL_GL_ALPHA_SIZE)
+        SDL_GL_SetAttribute(SDL_GL_RETAINED_BACKING, 0)
+        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1)
+
+    cdef void _create_egl_context(self):
+        cdef SDL_MetalView metal_view
+        cdef void* layer
+        if self.gl_backend_name == "mock":
+            return
+        if self.sdl_manages_egl_context:
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2)
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0)
+            self.ctx = SDL_GL_CreateContext(self.win)
+            if not self.ctx:
+                self.die()
+        else:
+            IF USE_ANGLE_GL_BACKEND:
+                metal_view = SDL_Metal_CreateView(self.win)
+                layer = SDL_Metal_GetLayer(metal_view)
+                egl = EGLANGLE()
+                egl.set_native_layer(layer)
+                egl.create_context()
+                self.egl_angle_storage = egl
+
+    cdef void _destroy_egl_context(self):
+        if self.sdl_manages_egl_context:
+            if self.ctx != NULL:
+                SDL_GL_DeleteContext(self.ctx)
+                self.ctx = NULL
+        else:
+            self.egl_angle_storage.destroy_context()
+            self.egl_angle_storage = None
 
     def _set_cursor_state(self, value):
         SDL_ShowCursor(value)
@@ -319,6 +360,10 @@ cdef class _WindowSDL2Storage:
 
     def _get_gl_size(self):
         cdef int w, h
+        IF USE_ANGLE_GL_BACKEND:
+            if not self.sdl_manages_egl_context:
+                SDL_Metal_GetDrawableSize(self.win, &w, &h)
+                return w, h
         SDL_GL_GetDrawableSize(self.win, &w, &h)
         return w, h
 
@@ -511,9 +556,7 @@ cdef class _WindowSDL2Storage:
         SDL_SetWindowIcon(self.win, icon)
 
     def teardown_window(self):
-        if self.ctx != NULL:
-            SDL_GL_DeleteContext(self.ctx)
-            self.ctx = NULL
+        self._destroy_egl_context()
         SDL_DestroyWindow(self.win)
         SDL_Quit()
 
@@ -778,13 +821,16 @@ cdef class _WindowSDL2Storage:
             pass
 
     def flip(self):
-        # On Android (and potentially other platforms), SDL_GL_SwapWindow may
-        # lock the thread waiting for a mutex from another thread to be
-        # released. Calling SDL_GL_SwapWindow with the GIL released allow the
-        # other thread to run (e.g. to process the event filter callback) and
-        # release the mutex SDL_GL_SwapWindow is waiting for.
-        with nogil:
-            SDL_GL_SwapWindow(self.win)
+        if self.sdl_manages_egl_context:
+            # On Android (and potentially other platforms), SDL_GL_SwapWindow may
+            # lock the thread waiting for a mutex from another thread to be
+            # released. Calling SDL_GL_SwapWindow with the GIL released allow the
+            # other thread to run (e.g. to process the event filter callback) and
+            # release the mutex SDL_GL_SwapWindow is waiting for.
+            with nogil:
+                SDL_GL_SwapWindow(self.win)
+        else:
+            self.egl_angle_storage.swap_buffers()
 
     def save_bytes_in_png(self, filename, data, int width, int height):
         cdef SDL_Surface *surface = SDL_CreateRGBSurfaceFrom(

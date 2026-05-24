@@ -1012,9 +1012,10 @@ def glGetString(GLenum name):
 
     Unlike the C specification, the value will be returned as a string.
     '''
-    cdef bytes p_string
-    p_string = <char *>cgl.glGetString(name)
-    return p_string
+    cdef const GLubyte *raw = cgl.glGetString(name)
+    if raw == NULL:
+        return None
+    return <bytes><char *>raw
 
 def glGetTexParameterfv(GLenum target, GLenum pname):
     '''See: `glGetTexParameterfv() on Kronos website

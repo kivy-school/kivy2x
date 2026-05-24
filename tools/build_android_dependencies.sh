@@ -87,6 +87,7 @@ for ABI in $ANDROID_ABIS; do
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
         -DANDROID_ABI="$ABI" \
         -DANDROID_PLATFORM="android-$ANDROID_MIN_API" \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DSDL_SHARED=ON \
         -DSDL_STATIC=OFF \
@@ -104,6 +105,7 @@ for ABI in $ANDROID_ABIS; do
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
         -DANDROID_ABI="$ABI" \
         -DANDROID_PLATFORM="android-$ANDROID_MIN_API" \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DSDL2IMAGE_VENDORED=ON \
@@ -122,6 +124,7 @@ for ABI in $ANDROID_ABIS; do
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
         -DANDROID_ABI="$ABI" \
         -DANDROID_PLATFORM="android-$ANDROID_MIN_API" \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DSDL2MIXER_VENDORED=ON \
@@ -140,6 +143,7 @@ for ABI in $ANDROID_ABIS; do
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
         -DANDROID_ABI="$ABI" \
         -DANDROID_PLATFORM="android-$ANDROID_MIN_API" \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DSDL2TTF_VENDORED=ON \
@@ -164,6 +168,20 @@ if [ -d "$BUILD_DIR/staging-arm64-v8a/include/SDL2" ]; then
     cp -r "$BUILD_DIR/staging-arm64-v8a/include/SDL2" "$BUILD_DIR/dist/include/"
 fi
 
+# Collect SDL2 Java sources (SDLActivity etc.) — the Android app/activity glue.
+# These ship in SDL2's source tarball under android-project/app/src/main/java/
+# and are required by any app embedding SDL2 on Android. We expose the whole
+# `org/libsdl/app/` tree so downstream tooling (ksproject) can pick them up
+# the same way it picks up .so files.
+echo "-- Collecting SDL2 Java sources"
+SDL2_JAVA_SRC="$BUILD_DIR/build/$ANDROID__SDL2__FOLDER/android-project/app/src/main/java"
+if [ -d "$SDL2_JAVA_SRC" ]; then
+    mkdir -p "$BUILD_DIR/dist/java"
+    cp -r "$SDL2_JAVA_SRC/." "$BUILD_DIR/dist/java/"
+else
+    echo "WARNING: SDL2 Java sources not found at $SDL2_JAVA_SRC"
+fi
+
 echo ""
 echo "Android SDL2 dependencies built successfully!"
 echo "Output: $BUILD_DIR"
@@ -172,5 +190,6 @@ echo "Layout:"
 echo "  dist/libs/arm64-v8a/  — .so files for arm64"
 echo "  dist/libs/x86_64/     — .so files for x86_64"
 echo "  dist/include/SDL2/    — headers for all SDL2 libraries"
+echo "  dist/java/org/libsdl/app/ — SDL2 Java glue (SDLActivity, etc.)"
 echo ""
 echo "Set KIVY_DEPS_ROOT=$BUILD_DIR to use them in setup.py."

@@ -431,7 +431,7 @@ def _get_platform():
     # On Android sys.platform returns 'linux2', so prefer to check the
     # existence of environ variables set during Python initialization
     kivy_build = environ.get('KIVY_BUILD', '')
-    if kivy_build in {'android', 'ios'}:
+    if _sys_platform in {'android', 'ios'}:
         return kivy_build
     elif 'P4A_BOOTSTRAP' in environ:
         return 'android'
