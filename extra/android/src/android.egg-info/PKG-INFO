@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: android
+Version: 0.0.1
+Summary: Android platform services for Kivy
+License: MIT
+Requires-Python: >=3.13
+Requires-Dist: pyjnius; sys_platform == "android"

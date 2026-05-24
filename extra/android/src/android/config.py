@@ -1,0 +1,10 @@
+BOOTSTRAP = 'sdl2'
+IS_SDL2 = 1
+IS_SDL3 = 0
+PY2 = 0
+ANDROID_LIBS_DIR = '/private/var/folders/yc/904502tj68772rzcgxbf98140000gn/T/cibw-run-tc889lja/cp314-android_x86_64/python/prefix/lib'
+JAVA_NAMESPACE = 'org.kivy.android'
+JNI_NAMESPACE = 'org/kivy/android'
+ACTIVITY_CLASS_NAME = 'org.kivy.android.PythonActivity'
+ACTIVITY_CLASS_NAMESPACE = 'org/kivy/android/PythonActivity'
+SERVICE_CLASS_NAME = 'org.kivy.android.PythonService'

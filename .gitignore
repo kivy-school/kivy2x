@@ -92,3 +92,14 @@ kivy/graphics/egl_backend/egl_angle_metal.cpp
 kivy/graphics/egl_backend/egl_angle.c
 uv.lock
 test-app
+extra/android/build/
+extra/android/src/android/*.c
+extra/android/build/*.cpp
+extra/android/build/*.h
+extra/android/build/*.so
+extra/android/build/*.pyd
+extra/android/build/*.o
+extra/android/build/*.a
+extra/android/build/*.dll
+extra/android/build/*.dylib
+extra/android/build/*.exe
