@@ -12,6 +12,7 @@ if "--build_examples" in sys.argv:
 from kivy.utils import pi_version
 from copy import deepcopy
 import os
+import shutil
 from os.path import join, dirname, exists, basename, isdir
 from os import walk, environ, makedirs
 from collections import OrderedDict
@@ -55,6 +56,33 @@ def getoutput(cmd, env=None):
             print('{0}\n'.format(stderr_content))
         return ""
     return p.stdout.read()
+
+
+def _fix_ios_angle_framework_install_name(fw_path, fw_name):
+    """Patch ANGLE framework install name to @rpath/Frameworks/... (iOS requirement)."""
+    binary = join(fw_path, fw_name)
+    if not exists(binary):
+        return
+    new_id = '@rpath/Frameworks/{}.framework/{}'.format(fw_name, fw_name)
+    current_id = getoutput('otool -D "{}"'.format(binary))
+    if isinstance(current_id, bytes):
+        current_id = current_id.decode('utf-8')
+    if new_id in current_id:
+        return
+    print('Fixing ANGLE install name for {}: {}'.format(fw_name, new_id))
+    getoutput('install_name_tool -id "{}" "{}"'.format(new_id, binary))
+
+
+def _populate_ios_egl_framework_headers(fw_path, src_include_dir):
+    """Copy EGL/GLES2/KHR headers into the framework's Headers/ directory."""
+    headers_dir = join(fw_path, 'Headers')
+    if not exists(headers_dir):
+        makedirs(headers_dir)
+    for subdir in ('EGL', 'GLES2', 'KHR'):
+        src = join(src_include_dir, subdir)
+        dst = join(headers_dir, subdir)
+        if exists(src) and not exists(dst):
+            shutil.copytree(src, dst)
 
 
 def pkgconfig(*packages, **kw):
@@ -231,7 +259,17 @@ if platform == 'ios':
     egl_fw = join(egl_xc, plat_arch, 'libEGL.framework')
     gles_fw = join(gles_xc, plat_arch, 'libGLESv2.framework')
 
-    egl_headers = join(KIVY_DEPS_ROOT, 'dist', 'include')
+    _fix_ios_angle_framework_install_name(egl_fw, 'libEGL')
+    _fix_ios_angle_framework_install_name(gles_fw, 'libGLESv2')
+
+    _src_include = join(KIVY_DEPS_ROOT, 'dist', 'include')
+    for _slice in os.listdir(egl_xc):
+        if _slice == 'Info.plist':
+            continue
+        _populate_ios_egl_framework_headers(
+            join(egl_xc, _slice, 'libEGL.framework'), _src_include)
+
+    egl_headers = join(egl_fw, 'Headers')
 
     ios_data['frameworks'] = {
         'SDL2': {

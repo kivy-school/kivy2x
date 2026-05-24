@@ -71,6 +71,8 @@ cpdef cgl_get_initialized_backend_name():
 cpdef cgl_get_backend_name(allowed=[], ignored=[]):
     if cgl_name:
         return cgl_name
+    IF PLATFORM == 'ios':
+        return 'angle'
     name = environ.get("KIVY_GL_BACKEND")
     if name:
         return name.lower()

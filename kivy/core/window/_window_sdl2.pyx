@@ -360,6 +360,10 @@ cdef class _WindowSDL2Storage:
 
     def _get_gl_size(self):
         cdef int w, h
+        IF USE_ANGLE_GL_BACKEND:
+            if not self.sdl_manages_egl_context:
+                SDL_Metal_GetDrawableSize(self.win, &w, &h)
+                return w, h
         SDL_GL_GetDrawableSize(self.win, &w, &h)
         return w, h
 

@@ -662,6 +662,7 @@ cdef extern from "SDL.h":
     cdef int SDL_SetWindowHitTest(SDL_Window *window, SDL_HitTest callback, void *callback_data)
     cdef SDL_MetalView SDL_Metal_CreateView(SDL_Window * window)
     cdef void* SDL_Metal_GetLayer(SDL_MetalView view)
+    cdef void SDL_Metal_GetDrawableSize(SDL_Window* window, int *w, int *h)
     # Sound audio formats
     Uint16 AUDIO_U8     #0x0008  /**< Unsigned 8-bit samples */
     Uint16 AUDIO_S8     #0x8008  /**< Signed 8-bit samples */
