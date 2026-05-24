@@ -3,9 +3,10 @@
 MAJOR = 2
 MINOR = 3
 MICRO = 1
+BUILD = 1
 RELEASE = True
 
-__version__ = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
+__version__ = '%d.%d.%d-%d' % (MAJOR, MINOR, MICRO, BUILD)
 
 if not RELEASE:
     # if it's a rcx release, it's not proceeded by a period. If it is a
