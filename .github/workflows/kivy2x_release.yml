@@ -34,17 +34,14 @@ jobs:
       - name: build wheels
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-          mkdir -p build/wheels
-          cd build
-          bash ../kivy_scripts/kivy2x_build_android_wheels.sh
+        run: cibuildwheel --platform android --output-dir wheelhouse
 
-      - run: ls build/wheels
+      - run: ls wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
           name: kivy2x-android-wheels
-          path: build/wheels/
+          path: wheelhouse/
 
   build-ios:
     name: Build iOS
@@ -66,17 +63,14 @@ jobs:
         run: pip install cibuildwheel
 
       - name: build wheels
-        run: |
-          mkdir -p build/wheels
-          cd build
-          bash ../kivy_scripts/kivy2x_build_ios_wheels.sh
+        run: cibuildwheel --platform ios --output-dir wheelhouse
 
-      - run: ls build/wheels
+      - run: ls wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
           name: kivy2x-ios-wheels
-          path: build/wheels/
+          path: wheelhouse/
 
   build-macos:
     name: Build macOS
@@ -98,17 +92,14 @@ jobs:
         run: pip install cibuildwheel
 
       - name: build wheels
-        run: |
-          mkdir -p build/wheels
-          cd build
-          bash ../kivy_scripts/kivy2x_build_macos_wheels.sh
+        run: cibuildwheel --platform macos --output-dir wheelhouse
 
-      - run: ls build/wheels
+      - run: ls wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
           name: kivy2x-macos-wheels
-          path: build/wheels/
+          path: wheelhouse/
 
   publish-r2:
     name: Publish to R2
