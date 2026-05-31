@@ -34,7 +34,7 @@ jobs:
       - name: build wheels
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: cibuildwheel --platform android --output-dir wheelhouse
+        run: cibuildwheel --platform android --archs all --output-dir wheelhouse
 
       - run: ls wheelhouse
 
@@ -63,7 +63,7 @@ jobs:
         run: pip install cibuildwheel
 
       - name: build wheels
-        run: cibuildwheel --platform ios --output-dir wheelhouse
+        run: cibuildwheel --platform ios --archs all --output-dir wheelhouse
 
       - run: ls wheelhouse
 
@@ -92,7 +92,7 @@ jobs:
         run: pip install cibuildwheel
 
       - name: build wheels
-        run: cibuildwheel --platform macos --output-dir wheelhouse
+        run: cibuildwheel --platform macos --archs all --output-dir wheelhouse
 
       - run: ls wheelhouse
 
