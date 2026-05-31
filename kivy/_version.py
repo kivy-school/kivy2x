@@ -6,7 +6,7 @@ MICRO = 1
 BUILD = 1
 RELEASE = True
 
-__version__ = '%d.%d.%d.post%d' % (MAJOR, MINOR, MICRO, BUILD)
+__version__ = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 if not RELEASE:
     # if it's a rcx release, it's not proceeded by a period. If it is a
