@@ -40,3 +40,4 @@ jobs:
         with:
           name: kivy2x-android-wheels
           path: wheelhouse/
+          retention-days: 1

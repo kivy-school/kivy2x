@@ -73,6 +73,13 @@ public class KivyKeyboardProxy {
          */
         void onAction(String action);
 
+        /**
+         * Delete committed text around the cursor.
+         * @param beforeLength Number of characters to delete before the cursor.
+         * @param afterLength Number of characters to delete after the cursor.
+         */
+        void onDeleteSurrounding(int beforeLength, int afterLength);
+
         /** The IME was dismissed (back button or Done). */
         void onHide();
     }
@@ -203,12 +210,8 @@ public class KivyKeyboardProxy {
                 @Override
                 public boolean deleteSurroundingText(int beforeLength,
                                                      int afterLength) {
-                    if (beforeLength > 0 && _listener != null) {
-                        // Emit individual backspace actions so Kivy's
-                        // undo stack stays consistent
-                        for (int i = 0; i < beforeLength; i++) {
-                            _listener.onAction("backspace");
-                        }
+                    if ((beforeLength > 0 || afterLength > 0) && _listener != null) {
+                        _listener.onDeleteSurrounding(beforeLength, afterLength);
                         return true;
                     }
                     return super.deleteSurroundingText(beforeLength, afterLength);

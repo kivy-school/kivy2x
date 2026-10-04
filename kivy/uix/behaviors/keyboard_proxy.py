@@ -108,6 +108,14 @@ if platform == 'android':
                 Clock.schedule_once(
                     lambda dt: w._proxy_on_action(action), 0)
 
+            @java_method('(II)V')
+            def onDeleteSurrounding(self, before_length, after_length):
+                w = self._widget
+                if w is None:
+                    return
+                Clock.schedule_once(
+                    lambda dt: w._proxy_on_delete_surrounding(before_length, after_length), 0)
+
             @java_method('()V')
             def onHide(self):
                 w = self._widget
@@ -256,6 +264,35 @@ if platform == 'android':
                 # selection and multiline all behave identically.
                 key_tuple = (None, None, kivy_action, 1)
                 self._key_down(key_tuple)
+
+            def _proxy_on_delete_surrounding(self, before_length, after_length):
+                """Batch deletion from the IME (e.g. long-press delete / one-tap clear)."""
+                self._proxy_ime_updating = True
+                
+                if self._selection:
+                    sel_start = min(self._selection_from, self._selection_to)
+                    sel_end = max(self._selection_from, self._selection_to)
+                else:
+                    sel_start = sel_end = self.cursor_index()
+
+                keep_start = max(0, sel_start - before_length)
+                keep_end = min(len(self.text), sel_end + after_length)
+
+                # Delete the right portion first so indices for the left portion don't shift
+                if after_length > 0 and keep_end > sel_end:
+                    self._selection_from = sel_end
+                    self._selection_to = keep_end
+                    self._selection = True
+                    self.delete_selection()
+                    
+                # Now delete the left portion
+                if before_length > 0 and sel_start > keep_start:
+                    self._selection_from = keep_start
+                    self._selection_to = sel_start
+                    self._selection = True
+                    self.delete_selection()
+
+                self._proxy_ime_updating = False
 
             def _proxy_on_hide(self):
                 """IME dismissed (back button or Done)."""
