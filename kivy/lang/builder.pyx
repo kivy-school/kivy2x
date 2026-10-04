@@ -553,7 +553,7 @@ class BuilderBase(object):
         self._match_cache.clear()
         self._match_name_cache.clear()
 
-    cpdef _apply_rule(self, object widget, object rule, object rootrule, dict template_ctx=None,
+    def _apply_rule(self, object widget, object rule, object rootrule, dict template_ctx=None,
                       set ignored_consts=set(), list rule_children=None):
         # widget: the current instantiated widget
         # rule: the current rule

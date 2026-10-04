@@ -568,7 +568,7 @@ class Parser(object):
             else:
                 raise ParserException(self, ln, 'Unknown directive')
 
-    cpdef parse(self, str content):
+    def parse(self, str content):
         '''Parse the contents of a Parser file and return a list
         of root objects.
         '''
@@ -607,7 +607,7 @@ class Parser(object):
             ln, content = remaining_lines[0]
             raise ParserException(self, ln, 'Invalid data (not parsed)')
 
-    cpdef strip_comments(self, list lines):
+    def strip_comments(self, list lines):
         '''Remove all comments from all lines in-place.
            Comments need to be on a single line and not at the end of a line.
            i.e. a comment line's first non-whitespace character must be a #.
@@ -629,7 +629,7 @@ class Parser(object):
         
         lines[:] = new_lines
 
-    cpdef parse_level(self, int level, list lines, int spaces=0):
+    def parse_level(self, int level, list lines, int spaces=0):
         '''Parse the current level (level * spaces) indentation.
         '''
         cdef int indent = spaces * level if spaces > 0 else 0
