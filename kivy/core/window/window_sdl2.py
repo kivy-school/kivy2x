@@ -467,6 +467,18 @@ class WindowSDL(WindowBase):
 
     def minimize(self):
         if self._is_desktop:
+            if platform == 'win' and getattr(self, 'borderless', False):
+                try:
+                    import ctypes
+                    hwnd = self._win.get_window_info().window
+                    if hwnd:
+                        SW_MINIMIZE = 6
+                        ctypes.windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
+                        self.dispatch('on_minimize')
+                        return
+                except Exception as e:
+                    Logger.warning(f'Window: Failed borderless minimize via ctypes: {e}')
+                    
             self._win.minimize_window()
         else:
             Logger.warning('Window: minimize() is used only on desktop OSes.')
