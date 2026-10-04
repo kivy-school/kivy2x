@@ -19,7 +19,7 @@ dependencies = [
     "kivy_deps.glew~=0.3.1; sys_platform == 'win32'",
     "pypiwin32; sys_platform == 'win32'",
 
-    "pyjnius; sys_platform == 'android'",
+    "pyjnius==1.7.0; sys_platform == 'android'",
     #"android; sys_platform == 'android'",
     "pyobjus; sys_platform == 'ios'",
 ]

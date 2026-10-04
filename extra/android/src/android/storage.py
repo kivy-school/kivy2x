@@ -1,7 +1,7 @@
 from jnius import autoclass, cast
 import os
 
-from android.config import ACTIVITY_CLASS_NAME, SERVICE_CLASS_NAME
+from android.config import SERVICE_CLASS_NAME
 
 
 Environment = autoclass('android.os.Environment')
@@ -30,8 +30,8 @@ def _get_activity():
     """
     Retrieves the activity from `PythonActivity` fallback to `PythonService`.
     """
-    PythonActivity = autoclass(ACTIVITY_CLASS_NAME)
-    activity = PythonActivity.mActivity
+    from android import mActivity
+    activity = mActivity
     if activity is None:
         # assume we're running from the background service
         PythonService = autoclass(SERVICE_CLASS_NAME)
@@ -52,6 +52,65 @@ def app_storage_path():
     context = cast('android.content.ContextWrapper',
                    currentActivity.getApplicationContext())
     file_p = cast('java.io.File', context.getFilesDir())
+    return os.path.normpath(os.path.abspath(
+        file_p.getAbsolutePath().replace("/", os.path.sep)))
+
+
+def app_cache_path():
+    """ Locate the built-in device cache storage used for this app only.
+
+        This storage is APP-SPECIFIC, and not visible to other apps.
+        It can be wiped by the system if the device runs low on space.
+
+        Returns directory path to cache storage.
+    """
+    activity = _get_activity()
+    currentActivity = cast('android.app.Activity', activity)
+    context = cast('android.content.ContextWrapper',
+                   currentActivity.getApplicationContext())
+    file_p = cast('java.io.File', context.getCacheDir())
+    if file_p is None:
+        return None
+    return os.path.normpath(os.path.abspath(
+        file_p.getAbsolutePath().replace("/", os.path.sep)))
+
+
+def app_external_storage_path():
+    """ Locate the external device storage used for this app only.
+
+        This storage is APP-SPECIFIC, but visible to other apps and the user.
+        It will be wiped when your app is uninstalled.
+        On Android 11+, this does NOT require storage permissions.
+
+        Returns directory path to external storage.
+    """
+    activity = _get_activity()
+    currentActivity = cast('android.app.Activity', activity)
+    context = cast('android.content.ContextWrapper',
+                   currentActivity.getApplicationContext())
+    file_p = cast('java.io.File', context.getExternalFilesDir(None))
+    if file_p is None:
+        return None
+    return os.path.normpath(os.path.abspath(
+        file_p.getAbsolutePath().replace("/", os.path.sep)))
+
+
+def app_external_cache_path():
+    """ Locate the external cache storage used for this app only.
+
+        This storage is APP-SPECIFIC, but visible to other apps and the user.
+        It will be wiped when your app is uninstalled or when cache is cleared.
+        On Android 11+, this does NOT require storage permissions.
+
+        Returns directory path to external cache storage.
+    """
+    activity = _get_activity()
+    currentActivity = cast('android.app.Activity', activity)
+    context = cast('android.content.ContextWrapper',
+                   currentActivity.getApplicationContext())
+    file_p = cast('java.io.File', context.getExternalCacheDir())
+    if file_p is None:
+        return None
     return os.path.normpath(os.path.abspath(
         file_p.getAbsolutePath().replace("/", os.path.sep)))
 

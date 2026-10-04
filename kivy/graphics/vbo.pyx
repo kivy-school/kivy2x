@@ -190,13 +190,20 @@ cdef class VertexBatch:
         free(vi)
 
         # build element list for DrawElements using vbo indices
-        # TODO: remove buffer usage in this case, the memory is always one big
-        # block. no need to use add() everytime we need to reconstruct the list.
+        # Optimization: use a single add() call to avoid function overhead per-index
         cdef int local_index
         cdef unsigned short *vbi = <unsigned short*>self.vbo_index.pointer()
+        cdef unsigned short *mapped_indices = <unsigned short *>malloc(sizeof(unsigned short) * indices_count)
+        
+        if mapped_indices == NULL:
+            raise MemoryError('element index allocation')
+            
         for i in xrange(indices_count):
-            local_index = indices[i]
-            self.elements.add(&vbi[local_index], NULL, 1)
+            mapped_indices[i] = vbi[indices[i]]
+            
+        self.elements.add(mapped_indices, NULL, indices_count)
+        free(mapped_indices)
+        
         self.flags |= V_NEEDUPLOAD
 
     cdef void draw(self):

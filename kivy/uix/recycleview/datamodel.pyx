@@ -20,13 +20,15 @@ from functools import partial
 __all__ = ('RecycleDataModelBehavior', 'RecycleDataModel')
 
 
-def recondition_slice_assign(val, last_len, new_len):
+def recondition_slice_assign(val, int last_len, int new_len):
     if not isinstance(val, slice):
         return slice(val, val + 1)
 
-    diff = new_len - last_len
+    cdef int diff = new_len - last_len
+    cdef int start = val.start if val.start is not None else 0
+    cdef int stop = val.stop if val.stop is not None else last_len
+    step = val.step
 
-    start, stop, step = val.start, val.stop, val.step
     if stop <= start:
         return slice(0, 0)
 

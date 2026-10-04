@@ -69,7 +69,7 @@ cdef class GraphicsCompiler:
         cdef ContextInstruction ci
         cdef RenderContext rc = None, oldrc = None
         cdef dict cs_by_rc = {}
-        cdef list cs
+        cdef set cs
 
         # Very simple compiler. We will apply all the element in the group.
         # If the render context is not changed between 2 call, we'll think that
@@ -107,7 +107,7 @@ cdef class GraphicsCompiler:
                 # if a state has never been in the cache yet, we can't ignore
                 # it.
                 if rc not in cs_by_rc:
-                    cs = cs_by_rc[rc] = []
+                    cs = cs_by_rc[rc] = set()
                 else:
                     cs = cs_by_rc[rc]
                 needed = 0
@@ -119,7 +119,7 @@ cdef class GraphicsCompiler:
                     # rendercontext.set_texture(). So we have no choice to try the
                     # apply(), and saving in cs, as a texture0
                     if 'texture0' not in cs:
-                        cs.append('texture0')
+                        cs.add('texture0')
                         needed = 1
 
                 else:
@@ -128,7 +128,7 @@ cdef class GraphicsCompiler:
                         if state in cs:
                             continue
                         needed = 1
-                        cs.append(state)
+                        cs.add(state)
 
                 # unflag the instruction only if it's not needed
                 # and if the render context have not been changed

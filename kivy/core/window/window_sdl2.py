@@ -38,6 +38,11 @@ from kivy.utils import platform, deprecated
 from kivy.compat import unichr
 from collections import deque
 
+# On Android the IME is owned by KivyKeyboardProxy.java; SDL must not
+# try to control it at the same time.
+_android_proxy_active = platform == 'android'
+
+
 
 # SDL_keycode.h, https://wiki.libsdl.org/SDL_Keymod
 KMOD_NONE = 0x0000
@@ -416,6 +421,46 @@ class WindowSDL(WindowBase):
 
     def maximize(self):
         if self._is_desktop:
+            if platform == 'win' and getattr(self, 'borderless', False):
+                try:
+                    import ctypes
+                    from ctypes.wintypes import RECT
+                    hwnd = self._win.get_window_info().window
+                    if hwnd:
+                        class MONITORINFO(ctypes.Structure):
+                            _fields_ = [("cbSize", ctypes.c_uint32),
+                                        ("rcMonitor", RECT),
+                                        ("rcWork", RECT),
+                                        ("dwFlags", ctypes.c_uint32)]
+                        
+                        MONITOR_DEFAULTTONEAREST = 2
+                        hMonitor = ctypes.windll.user32.MonitorFromWindow(
+                            hwnd, MONITOR_DEFAULTTONEAREST)
+                        if hMonitor:
+                            monitor_info = MONITORINFO()
+                            monitor_info.cbSize = ctypes.sizeof(MONITORINFO)
+                            if ctypes.windll.user32.GetMonitorInfoW(
+                                    hMonitor, ctypes.byref(monitor_info)):
+                                work = monitor_info.rcWork
+                                
+                                # Store current rect for restore()
+                                if not hasattr(self, '_win_restore_rect'):
+                                    rect = RECT()
+                                    ctypes.windll.user32.GetWindowRect(
+                                        hwnd, ctypes.byref(rect))
+                                    self._win_restore_rect = rect
+
+                                SWP_NOZORDER = 0x0004
+                                SWP_SHOWWINDOW = 0x0040
+                                ctypes.windll.user32.SetWindowPos(
+                                    hwnd, 0, work.left, work.top,
+                                    work.right - work.left, work.bottom - work.top,
+                                    SWP_NOZORDER | SWP_SHOWWINDOW)
+                                self.dispatch('on_maximize')
+                                return
+                except Exception as e:
+                    Logger.warning(f'Window: Failed borderless maximize via ctypes: {e}')
+                    
             self._win.maximize_window()
         else:
             Logger.warning('Window: maximize() is used only on desktop OSes.')
@@ -428,6 +473,24 @@ class WindowSDL(WindowBase):
 
     def restore(self):
         if self._is_desktop:
+            if platform == 'win' and getattr(self, 'borderless', False) and hasattr(self, '_win_restore_rect'):
+                try:
+                    import ctypes
+                    hwnd = self._win.get_window_info().window
+                    if hwnd:
+                        rect = self._win_restore_rect
+                        SWP_NOZORDER = 0x0004
+                        SWP_SHOWWINDOW = 0x0040
+                        ctypes.windll.user32.SetWindowPos(
+                            hwnd, 0, rect.left, rect.top,
+                            rect.right - rect.left, rect.bottom - rect.top,
+                            SWP_NOZORDER | SWP_SHOWWINDOW)
+                        del self._win_restore_rect
+                        self.dispatch('on_restore')
+                        return
+                except Exception as e:
+                    Logger.warning(f'Window: Failed borderless restore via ctypes: {e}')
+                    
             self._win.restore_window()
         else:
             Logger.warning('Window: restore() is used only on desktop OSes.')
@@ -897,18 +960,23 @@ class WindowSDL(WindowBase):
             request_keyboard(
             callback, target, input_type, keyboard_suggestions
         )
-        self._win.show_keyboard(
-            self._system_keyboard,
-            self.softinput_mode,
-            input_type,
-            keyboard_suggestions,
-        )
-        Clock.schedule_interval(self._check_keyboard_shown, 1 / 5.)
+        # On Android, KivyKeyboardProxy.java manages the IME directly.
+        # Calling SDL's show_keyboard here would interfere, so we skip it.
+        if not _android_proxy_active:
+            self._win.show_keyboard(
+                self._system_keyboard,
+                self.softinput_mode,
+                input_type,
+                keyboard_suggestions,
+            )
+            Clock.schedule_interval(self._check_keyboard_shown, 1 / 5.)
         return self._sdl_keyboard
 
     def release_keyboard(self, *largs):
         super(WindowSDL, self).release_keyboard(*largs)
-        self._win.hide_keyboard()
+        # Same guard: on Android our Java proxy handles hide.
+        if not _android_proxy_active:
+            self._win.hide_keyboard()
         self._sdl_keyboard = None
         return True
 

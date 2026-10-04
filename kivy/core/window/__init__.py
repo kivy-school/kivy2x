@@ -1148,6 +1148,32 @@ class WindowBase(EventDispatcher):
         from kivy.metrics import Metrics
         Metrics.reset_dpi()
 
+    def on_softinput_mode(self, instance, value):
+        from kivy.utils import platform
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                from android.runnable import run_on_ui_thread
+
+                @run_on_ui_thread
+                def set_softinput_mode(mode):
+                    PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                    activity = PythonActivity.mActivity
+                    if activity:
+                        activity.getWindow().setSoftInputMode(mode)
+
+                WindowManager = autoclass('android.view.WindowManager$LayoutParams')
+                # 0x10 is SOFT_INPUT_ADJUST_RESIZE, 0x20 is SOFT_INPUT_ADJUST_PAN
+                mode = WindowManager.SOFT_INPUT_ADJUST_UNSPECIFIED
+                if value == 'resize':
+                    mode = WindowManager.SOFT_INPUT_ADJUST_RESIZE
+                elif value == 'pan':
+                    mode = WindowManager.SOFT_INPUT_ADJUST_PAN
+                
+                set_softinput_mode(mode)
+            except Exception as e:
+                Logger.warning('Window: Failed to set Android softinput_mode: {}'.format(e))
+
     def _bind_create_window(self):
         for prop in (
                 'fullscreen', 'borderless', 'position', 'top',

@@ -57,21 +57,48 @@ def add_android_libs_to_wheels(wheels_path: str):
             continue
 
         wheel_path = os.path.join(wheels_path, wheel)
-        with zipfile.ZipFile(
-            wheel_path,
-            "a",
-            compression=zipfile.ZIP_DEFLATED,
-            compresslevel=6,
-        ) as whl:
-            print("Adding Android .so files to wheel: {}".format(wheel_path))
+        temp_wheel = wheel_path + '.tmp'
+        records = []
+        record_filename = None
+
+        def get_hash(content):
+            import hashlib, base64
+            digest = hashlib.sha256(content).digest()
+            return 'sha256=' + base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+
+        with zipfile.ZipFile(wheel_path, 'r') as zin, \
+             zipfile.ZipFile(temp_wheel, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zout:
+
+            print("Adding Android files to wheel: {}".format(wheel_path))
+            
+            written_files = set()
+            
+            # Copy existing files
+            for item in zin.infolist():
+                if item.filename.endswith('RECORD'):
+                    record_filename = item.filename
+                    continue
+                # Skip existing injected folders so we can cleanly overwrite them
+                if item.filename.startswith(('.java/', '.kotlin/', '.gradle/', '.include/')):
+                    continue
+                content = zin.read(item.filename)
+                zout.writestr(item, content)
+                records.append(f"{item.filename},{get_hash(content)},{len(content)}")
+                written_files.add(item.filename)
+
+            # Inject .so files
             for so_file in so_files:
                 file_path = os.path.join(libs_dir, so_file)
-                arcname = os.path.join(".libs", abi, so_file)
+                arcname = os.path.join(".libs", abi, so_file).replace('\\', '/')
                 print("  Adding {} as {}".format(so_file, arcname))
-                whl.write(file_path, arcname)
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                if arcname not in written_files:
+                    zout.writestr(arcname, content)
+                    records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                    written_files.add(arcname)
 
-            # Inject SDL2 Java sources under .java/ (mirrors .libs/ layout).
-            # ABI-independent, so we add the whole tree once per wheel.
+            # Inject SDL2 Java sources under .java/
             java_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "java")
             if os.path.isdir(java_dir):
                 print("Adding Android Java sources to wheel: {}".format(wheel_path))
@@ -79,9 +106,14 @@ def add_android_libs_to_wheels(wheels_path: str):
                     for fname in files:
                         file_path = os.path.join(root, fname)
                         rel = os.path.relpath(file_path, java_dir)
-                        arcname = os.path.join(".java", rel)
+                        arcname = os.path.join(".java", rel).replace('\\', '/')
                         print("  Adding {} as {}".format(rel, arcname))
-                        whl.write(file_path, arcname)
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
             else:
                 print(
                     "No Java sources found at {}, skipping .java/ injection".format(
@@ -89,8 +121,110 @@ def add_android_libs_to_wheels(wheels_path: str):
                     )
                 )
 
-            # Inject SDL2 headers under .include/ (mirrors .libs/ / .java/ layout).
-            # ABI-independent, so we add the whole tree once per wheel.
+            # Inject Kivy local Java sources under .java/
+            kivy_java_dir = "java"
+            if os.path.isdir(kivy_java_dir):
+                print("Adding Kivy local Java sources to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(kivy_java_dir):
+                    for fname in files:
+                        if not fname.endswith('.java'):
+                            continue
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, kivy_java_dir)
+                        arcname = os.path.join(".java", rel).replace('\\', '/')
+                        print("  Adding {} as {}".format(rel, arcname))
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
+
+            # Inject SDL2 Kotlin sources under .kotlin/
+            kotlin_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "kotlin")
+            if os.path.isdir(kotlin_dir):
+                print("Adding Android Kotlin sources to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(kotlin_dir):
+                    for fname in files:
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, kotlin_dir)
+                        arcname = os.path.join(".kotlin", rel).replace('\\', '/')
+                        print("  Adding {} as {}".format(rel, arcname))
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
+            else:
+                print(
+                    "No Kotlin sources found at {}, skipping .kotlin/ injection".format(
+                        kotlin_dir
+                    )
+                )
+
+            # Inject Kivy local Kotlin sources under .kotlin/
+            kivy_kotlin_dir = "kotlin"
+            if os.path.isdir(kivy_kotlin_dir):
+                print("Adding Kivy local Kotlin sources to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(kivy_kotlin_dir):
+                    for fname in files:
+                        if not fname.endswith('.kt'):
+                            continue
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, kivy_kotlin_dir)
+                        arcname = os.path.join(".kotlin", rel).replace('\\', '/')
+                        print("  Adding {} as {}".format(rel, arcname))
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
+
+            # Inject Gradle files under .gradle/
+            gradle_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "gradle")
+            if os.path.isdir(gradle_dir):
+                print("Adding Gradle files to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(gradle_dir):
+                    for fname in files:
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, gradle_dir)
+                        arcname = os.path.join(".gradle", rel).replace('\\', '/')
+                        print("  Adding {} as {}".format(rel, arcname))
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
+            else:
+                print(
+                    "No Gradle files found at {}, skipping .gradle/ injection".format(
+                        gradle_dir
+                    )
+                )
+
+            # Inject Kivy local Gradle files under .gradle/
+            kivy_gradle_dir = "gradle"
+            if os.path.isdir(kivy_gradle_dir):
+                print("Adding Kivy local Gradle files to wheel: {}".format(wheel_path))
+                for root, _dirs, files in os.walk(kivy_gradle_dir):
+                    for fname in files:
+                        if not (fname.endswith('.gradle') or fname.endswith('.kts') or fname.endswith('.properties')):
+                            continue
+                        file_path = os.path.join(root, fname)
+                        rel = os.path.relpath(file_path, kivy_gradle_dir)
+                        arcname = os.path.join(".gradle", rel).replace('\\', '/')
+                        print("  Adding {} as {}".format(rel, arcname))
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
+
+            # Inject SDL2 headers under .include/
             include_dir = os.path.join(KIVY_DEPS_ROOT, "dist", "include")
             if os.path.isdir(include_dir):
                 print("Adding Android SDL headers to wheel: {}".format(wheel_path))
@@ -98,15 +232,30 @@ def add_android_libs_to_wheels(wheels_path: str):
                     for fname in files:
                         file_path = os.path.join(root, fname)
                         rel = os.path.relpath(file_path, include_dir)
-                        arcname = os.path.join(".include", rel)
+                        arcname = os.path.join(".include", rel).replace('\\', '/')
                         print("  Adding {} as {}".format(rel, arcname))
-                        whl.write(file_path, arcname)
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                        if arcname not in written_files:
+                            zout.writestr(arcname, content)
+                            records.append(f"{arcname},{get_hash(content)},{len(content)}")
+                            written_files.add(arcname)
             else:
                 print(
                     "No headers found at {}, skipping .include/ injection".format(
                         include_dir
                     )
                 )
+
+            # Rewrite RECORD
+            if record_filename:
+                records.append(f"{record_filename},,")
+                record_content = '\n'.join(records) + '\n'
+                zout.writestr(record_filename, record_content.encode('utf-8'))
+            
+        # Replace the old wheel with the updated one
+        os.remove(wheel_path)
+        os.rename(temp_wheel, wheel_path)
 
 
 if __name__ == "__main__":

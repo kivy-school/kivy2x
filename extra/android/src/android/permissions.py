@@ -2,14 +2,16 @@ import threading
 
 try:
     from jnius import autoclass, PythonJavaClass, java_method
+    from android import mActivity
 except ImportError:
     # To allow importing by build/manifest-creating code without
     # pyjnius being present:
     def autoclass(item):
         raise RuntimeError("pyjnius not available")
+    mActivity = None
 
 
-from android.config import ACTIVITY_CLASS_NAME, ACTIVITY_CLASS_NAMESPACE
+from android.config import ACTIVITY_CLASS_NAMESPACE
 
 
 class Permission:
@@ -449,6 +451,84 @@ class Permission:
     WRITE_VOICEMAIL = (
         "com.android.voicemail.permission.WRITE_VOICEMAIL"
         )
+    POST_NOTIFICATIONS = (
+        "android.permission.POST_NOTIFICATIONS"
+        )
+    READ_MEDIA_AUDIO = (
+        "android.permission.READ_MEDIA_AUDIO"
+        )
+    READ_MEDIA_IMAGES = (
+        "android.permission.READ_MEDIA_IMAGES"
+        )
+    READ_MEDIA_VIDEO = (
+        "android.permission.READ_MEDIA_VIDEO"
+        )
+    READ_MEDIA_VISUAL_USER_SELECTED = (
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+        )
+    BLUETOOTH_ADVERTISE = (
+        "android.permission.BLUETOOTH_ADVERTISE"
+        )
+    BLUETOOTH_CONNECT = (
+        "android.permission.BLUETOOTH_CONNECT"
+        )
+    BLUETOOTH_SCAN = (
+        "android.permission.BLUETOOTH_SCAN"
+        )
+    NEARBY_WIFI_DEVICES = (
+        "android.permission.NEARBY_WIFI_DEVICES"
+        )
+    UWB_RANGING = (
+        "android.permission.UWB_RANGING"
+        )
+    BODY_SENSORS_BACKGROUND = (
+        "android.permission.BODY_SENSORS_BACKGROUND"
+        )
+    FOREGROUND_SERVICE = (
+        "android.permission.FOREGROUND_SERVICE"
+        )
+    FOREGROUND_SERVICE_CAMERA = (
+        "android.permission.FOREGROUND_SERVICE_CAMERA"
+        )
+    FOREGROUND_SERVICE_CONNECTED_DEVICE = (
+        "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
+        )
+    FOREGROUND_SERVICE_DATA_SYNC = (
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        )
+    FOREGROUND_SERVICE_HEALTH = (
+        "android.permission.FOREGROUND_SERVICE_HEALTH"
+        )
+    FOREGROUND_SERVICE_LOCATION = (
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        )
+    FOREGROUND_SERVICE_MEDIA_PLAYBACK = (
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        )
+    FOREGROUND_SERVICE_MEDIA_PROJECTION = (
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        )
+    FOREGROUND_SERVICE_MICROPHONE = (
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE"
+        )
+    FOREGROUND_SERVICE_PHONE_CALL = (
+        "android.permission.FOREGROUND_SERVICE_PHONE_CALL"
+        )
+    FOREGROUND_SERVICE_REMOTE_MESSAGING = (
+        "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING"
+        )
+    FOREGROUND_SERVICE_SPECIAL_USE = (
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        )
+    FOREGROUND_SERVICE_SYSTEM_EXEMPTED = (
+        "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"
+        )
+    SCHEDULE_EXACT_ALARM = (
+        "android.permission.SCHEDULE_EXACT_ALARM"
+        )
+    USE_EXACT_ALARM = (
+        "android.permission.USE_EXACT_ALARM"
+        )
     MANAGE_EXTERNAL_STORAGE = (  # Convenient use of paths to manage files
         "android.permission.MANAGE_EXTERNAL_STORAGE"
         )
@@ -515,7 +595,6 @@ class _RequestPermissionsManager:
     def register_callback(cls):
         """Register Java callback for requestPermissions."""
         cls._java_callback = _onRequestPermissionsCallback(cls.python_callback)
-        mActivity = autoclass(ACTIVITY_CLASS_NAME).mActivity
         mActivity.addPermissionsCallback(cls._java_callback)
 
     @classmethod
@@ -539,7 +618,7 @@ class _RequestPermissionsManager:
         with cls._lock:
             if not cls._java_callback:
                 cls.register_callback()
-            mActivity = autoclass(ACTIVITY_CLASS_NAME).mActivity
+
             if not callback:
                 mActivity.requestPermissions(permissions)
             else:
@@ -614,7 +693,6 @@ def check_permission(permission):
     Returns:
         bool: True if the app holds the permission given, False otherwise.
     """
-    mActivity = autoclass(ACTIVITY_CLASS_NAME).mActivity
     result = bool(mActivity.checkCurrentPermission(
         permission + ""
     ))

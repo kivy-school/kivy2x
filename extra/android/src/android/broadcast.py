@@ -2,11 +2,19 @@
 # Broadcast receiver bridge
 import logging
 from jnius import autoclass, PythonJavaClass, java_method
-from android.config import JAVA_NAMESPACE, JNI_NAMESPACE, ACTIVITY_CLASS_NAME, SERVICE_CLASS_NAME
+from android.config import JAVA_NAMESPACE, JNI_NAMESPACE, SERVICE_CLASS_NAME
 
 logger = logging.getLogger("BroadcastReceiver")
 logger.setLevel(logging.DEBUG)
 
+
+_class_cache = {}
+
+def get_class(name):
+    global _class_cache
+    if name not in _class_cache:
+        _class_cache[name] = autoclass(name)
+    return _class_cache[name]
 
 class BroadcastReceiver(object):
 
@@ -22,10 +30,11 @@ class BroadcastReceiver(object):
         def onReceive(self, context, intent):
             self.callback(context, intent)
 
-    def __init__(self, callback, actions=None, categories=None):
+    def __init__(self, callback, actions=None, categories=None, exported=True):
         super().__init__()
         self.callback = callback
         self._is_registered = False
+        self.exported = exported
 
         if not actions and not categories:
             raise Exception('You need to define at least actions or categories')
@@ -40,14 +49,14 @@ class BroadcastReceiver(object):
                 return getattr(Intent, name)
 
         # resolve actions/categories first
-        Intent = autoclass('android.content.Intent')
+        Intent = get_class('android.content.Intent')
         resolved_actions = [_expand_partial_name(x) for x in actions or []]
         resolved_categories = [_expand_partial_name(x) for x in categories or []]
 
         # resolve android API
-        GenericBroadcastReceiver = autoclass(JAVA_NAMESPACE + '.GenericBroadcastReceiver')
-        IntentFilter = autoclass('android.content.IntentFilter')
-        HandlerThread = autoclass('android.os.HandlerThread')
+        GenericBroadcastReceiver = get_class(JAVA_NAMESPACE + '.GenericBroadcastReceiver')
+        IntentFilter = get_class('android.content.IntentFilter')
+        HandlerThread = get_class('android.os.HandlerThread')
 
         # create a thread for handling events from the receiver
         self.handlerthread = HandlerThread('handlerthread')
@@ -67,7 +76,7 @@ class BroadcastReceiver(object):
             logger.debug("HandlerThread already running, skipping start")
             return
 
-        HandlerThread = autoclass('android.os.HandlerThread')
+        HandlerThread = get_class('android.os.HandlerThread')
         self.handlerthread = HandlerThread('handlerthread')
         self.handlerthread.start()
 
@@ -75,10 +84,19 @@ class BroadcastReceiver(object):
             logger.info("Already registered.")
             return
 
-        Handler = autoclass('android.os.Handler')
+        Handler = get_class('android.os.Handler')
         self.handler = Handler(self.handlerthread.getLooper())
-        self.context.registerReceiver(
-            self.receiver, self.receiver_filter, None, self.handler)
+        
+        VERSION = get_class('android.os.Build$VERSION')
+        if VERSION.SDK_INT >= 33:
+            # Context.RECEIVER_EXPORTED (2) or Context.RECEIVER_NOT_EXPORTED (4)
+            flags = 2 if self.exported else 4
+            self.context.registerReceiver(
+                self.receiver, self.receiver_filter, None, self.handler, flags)
+        else:
+            self.context.registerReceiver(
+                self.receiver, self.receiver_filter, None, self.handler)
+                
         self._is_registered = True
 
     def stop(self):
@@ -97,7 +115,7 @@ class BroadcastReceiver(object):
     def context(self):
         from os import environ
         if 'PYTHON_SERVICE_ARGUMENT' in environ:
-            PythonService = autoclass(SERVICE_CLASS_NAME)
+            PythonService = get_class(SERVICE_CLASS_NAME)
             return PythonService.mService
-        PythonActivity = autoclass(ACTIVITY_CLASS_NAME)
-        return PythonActivity.mActivity
+        from android import mActivity
+        return mActivity
