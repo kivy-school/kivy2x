@@ -714,13 +714,8 @@ cdef class NumericProperty(Property):
         return NumericPropertyStorage.__new__(NumericPropertyStorage)
 
     cdef check(self, EventDispatcher obj, value, PropertyStorage property_storage):
-        if value is None:
-            if self.allownone:
-                return True
-            raise ValueError('None is not allowed for %s.%s' % (
-                obj.__class__.__name__,
-                self.name))
-        
+        if Property.check(self, obj, value, property_storage):
+            return True
         tp = type(value)
         if tp is not int and tp is not float:
             raise ValueError('%s.%s accept only int/float (got %r)' % (
@@ -796,13 +791,8 @@ cdef class StringProperty(Property):
         super(StringProperty, self).__init__(defaultvalue, **kw)
 
     cdef check(self, EventDispatcher obj, value, PropertyStorage property_storage):
-        if value is None:
-            if self.allownone:
-                return True
-            raise ValueError('None is not allowed for %s.%s' % (
-                obj.__class__.__name__,
-                self.name))
-        
+        if Property.check(self, obj, value, property_storage):
+            return True
         if not isinstance(value, str):
             raise ValueError('%s.%s accept only str' % (
                 obj.__class__.__name__,
@@ -1269,13 +1259,8 @@ cdef class BoundedNumericProperty(Property):
             return ps.bnum_f_max
 
     cdef check(self, EventDispatcher obj, value, PropertyStorage property_storage):
-        if value is None:
-            if self.allownone:
-                return True
-            raise ValueError('None is not allowed for %s.%s' % (
-                obj.__class__.__name__,
-                self.name))
-        
+        if Property.check(self, obj, value, property_storage):
+            return True
         cdef BoundedNumericPropertyStorage ps = property_storage
         if ps.bnum_use_min == 1:
             _min = ps.bnum_min
@@ -1362,13 +1347,8 @@ cdef class OptionProperty(Property):
         return OptionPropertyStorage.__new__(OptionPropertyStorage)
 
     cdef check(self, EventDispatcher obj, value, PropertyStorage property_storage):
-        if value is None:
-            if self.allownone:
-                return True
-            raise ValueError('None is not allowed for %s.%s' % (
-                obj.__class__.__name__,
-                self.name))
-        
+        if Property.check(self, obj, value, property_storage):
+            return True
         cdef OptionPropertyStorage ps = property_storage
         if value not in ps.options:
             raise ValueError('%s.%s is set to an invalid option %r. '
@@ -1445,15 +1425,16 @@ cdef class ReferenceListProperty(Property):
         cdef ReferenceListPropertyStorage ps = self.get_property_storage(obj)
         if ps.stop_event:
             return
-        
-        cdef tuple p = ps.properties
-        cdef list val = <list>ps.value
-        cdef int i
-        cdef Property prop
-        for i in range(len(p)):
-            prop = p[i]
-            # Bypass ObservableReferenceList.__setitem__ by casting to list
-            val[i] = prop.get(obj)
+        p = ps.properties
+
+        try:
+            ps.value.__setslice__(0, len(p),
+                    [prop.get(obj) for prop in p],
+                    update_properties=False)
+        except AttributeError:
+            ps.value.__setitem__(slice(len(p)),
+                    [prop.get(obj) for prop in p],
+                    update_properties=False)
 
         self._dispatch(obj, ps)
 
@@ -1482,19 +1463,18 @@ cdef class ReferenceListProperty(Property):
         self.check(obj, value, ps)
         # prevent dependency loop
         ps.stop_event = 1
-        
-        cdef tuple props = ps.properties
-        cdef Property prop
-        cdef list val = <list>ps.value
-        
-        for idx in range(len(props)):
+        props = ps.properties
+        for idx in xrange(len(props)):
             prop = props[idx]
             x = value[idx]
             prop.set(obj, x)
         ps.stop_event = 0
-        
-        for idx in range(len(value)):
-            val[idx] = value[idx]
+        try:
+            ps.value.__setslice__(0, len(value), value,
+                    update_properties=False)
+        except AttributeError:
+            ps.value.__setitem__(slice(len(value)), value,
+                    update_properties=False)
         self._dispatch(obj, ps)
         return True
 
@@ -1519,14 +1499,15 @@ cdef class ReferenceListProperty(Property):
     cpdef get(self, EventDispatcher obj):
         cdef ReferenceListPropertyStorage ps = self.get_property_storage(obj)
         cdef tuple p = ps.properties
-        cdef list val = <list>ps.value
-        cdef int i
-        cdef Property prop
-        for i in range(len(p)):
-            prop = p[i]
-            # Bypass ObservableReferenceList.__setitem__ by casting to list
-            val[i] = prop.get(obj)
-        return val
+        try:
+            ps.value.__setslice__(0, len(p),
+                    [prop.get(obj) for prop in p],
+                    update_properties=False)
+        except AttributeError:
+            ps.value.__setitem__(slice(len(p)),
+                    [prop.get(obj) for prop in p],
+                    update_properties=False)
+        return ps.value
 
 cdef class AliasProperty(Property):
     '''Create a property with a custom getter and setter.
