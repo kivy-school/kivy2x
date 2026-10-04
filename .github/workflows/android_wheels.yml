@@ -2,8 +2,9 @@ name: Android Wheels
 
 on:
   push:
+    branches:
+      - upgrade
   pull_request:
-  workflow_dispatch:
 
 jobs:
   build-android:
