@@ -1447,7 +1447,7 @@ cdef class ReferenceListProperty(Property):
             return
         
         cdef tuple p = ps.properties
-        cdef list val = ps.value
+        cdef list val = <list>ps.value
         cdef int i
         cdef Property prop
         for i in range(len(p)):
@@ -1485,7 +1485,7 @@ cdef class ReferenceListProperty(Property):
         
         cdef tuple props = ps.properties
         cdef Property prop
-        cdef list val = ps.value
+        cdef list val = <list>ps.value
         
         for idx in range(len(props)):
             prop = props[idx]
@@ -1519,7 +1519,7 @@ cdef class ReferenceListProperty(Property):
     cpdef get(self, EventDispatcher obj):
         cdef ReferenceListPropertyStorage ps = self.get_property_storage(obj)
         cdef tuple p = ps.properties
-        cdef list val = ps.value
+        cdef list val = <list>ps.value
         cdef int i
         cdef Property prop
         for i in range(len(p)):
