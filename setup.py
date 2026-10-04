@@ -1209,6 +1209,8 @@ sources = {
     '_event.pyx': merge(base_flags, {'depends': ['properties.pxd']}),
     '_clock.pyx': {},
     'weakproxy.pyx': {},
+    'lang/parser.pyx': base_flags,
+    'lang/builder.pyx': base_flags,
     'uix/recycleboxlayout.pyx': base_flags,
     'uix/recyclegridlayout.pyx': base_flags,
     'uix/recyclelayout.pyx': base_flags,
