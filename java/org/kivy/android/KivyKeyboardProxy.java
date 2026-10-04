@@ -1,4 +1,4 @@
-﻿package org.kivy.android;
+package org.kivy.android;
 
 /**
  * KivyKeyboardProxy - Android IME bridge for Kivy TextInput.
