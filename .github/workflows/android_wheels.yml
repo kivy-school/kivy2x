@@ -9,7 +9,7 @@ on:
 jobs:
   build-android:
     name: Build Android
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
