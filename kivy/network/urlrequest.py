@@ -54,6 +54,13 @@ Example of Posting data (adapted from httplib example)::
 
 If you want a synchronous request, you can call the wait() method.
 
+Example of using async/await::
+
+    async def fetch_data():
+        req = await UrlRequest('https://httpbin.org/headers')
+        for key, value in req.resp_headers.items():
+            print('{}: {}'.format(key, value))
+
 '''
 
 import os
@@ -541,6 +548,32 @@ class UrlRequestBase(Thread):
         .. versionadded:: 1.11.0
         '''
         self._cancel_event.set()
+
+    async def async_wait(self):
+        '''Wait for the request to finish (until :attr:`is_finished` is
+        True) and return the request object. This is an asynchronous
+        version of :meth:`wait`.
+
+        .. note::
+            This method is a coroutine and requires an async event loop.
+            It returns the current :class:`UrlRequest` instance.
+
+        .. versionadded:: 2.3.0
+        '''
+        from kivy.clock import Clock
+        if getattr(Clock, '_async_lib', None) is not None:
+            sleep = Clock._async_lib.sleep
+        else:
+            import asyncio
+            sleep = asyncio.sleep
+
+        while not self.is_finished:
+            await sleep(0.01)
+
+        return self
+
+    def __await__(self):
+        return self.async_wait().__await__()
 
 
 class UrlRequestUrllib(UrlRequestBase):

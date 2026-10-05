@@ -176,13 +176,17 @@ cdef class _WindowSDL2Storage:
 
         if multisamples > 0 and shaped > 0:
             # try to create shaped window with multisampling:
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
-            SDL_GL_SetAttribute(
-                SDL_GL_MULTISAMPLESAMPLES, min(multisamples, 4)
-            )
-            self.win = SDL_CreateShapedWindow(
-                NULL, x, y, width, height, self.win_flags
-            )
+            multisamples = min(multisamples, 16)
+            while multisamples > 0:
+                SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
+                SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisamples)
+                self.win = SDL_CreateShapedWindow(
+                    NULL, x, y, width, height, self.win_flags
+                )
+                if self.win:
+                    break
+                multisamples //= 2
+
             if not self.win:
                 # if an error occurred, create only shaped window:
                 SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0)
@@ -197,13 +201,17 @@ cdef class _WindowSDL2Storage:
                 )
         elif multisamples > 0:
             # try to create window with multisampling:
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
-            SDL_GL_SetAttribute(
-                SDL_GL_MULTISAMPLESAMPLES, min(multisamples, 4)
-            )
-            self.win = SDL_CreateWindow(
-                NULL, x, y, width, height, self.win_flags
-            )
+            multisamples = min(multisamples, 16)
+            while multisamples > 0:
+                SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
+                SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisamples)
+                self.win = SDL_CreateWindow(
+                    NULL, x, y, width, height, self.win_flags
+                )
+                if self.win:
+                    break
+                multisamples //= 2
+
             if not self.win:
                 # if an error occurred, create window without multisampling:
                 SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0)
@@ -275,9 +283,11 @@ cdef class _WindowSDL2Storage:
         return w, h
 
     cdef void _set_sdl_gl_common_attributes(self):
+        cdef int depth_size = Config.getdefaultint('graphics', 'depth_size', 16)
+        cdef int stencil_size = Config.getdefaultint('graphics', 'stencil_size', 8)
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16)
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depth_size)
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencil_size)
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8)
         SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8)
         SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8)
