@@ -613,14 +613,29 @@ cdef class _WindowSDL2Storage:
                     rect.h = 5
                     SDL_SetTextInputRect(rect)
                 else:
-                    # Supporting 'resize' needs to call the Android
-                    # API to set ADJUST_RESIZE mode, and change the
-                    # java bootstrap to a different root Layout.
                     rect.y = 0
                     rect.x = 0
                     rect.w = 10
                     rect.h = 1
                     SDL_SetTextInputRect(rect)
+
+                try:
+                    from jnius import autoclass
+                    from android.runnable import run_on_ui_thread
+                    from android import mActivity
+                    
+                    @run_on_ui_thread
+                    def _set_softinput_mode(mode):
+                        LayoutParams = autoclass('android.view.WindowManager$LayoutParams')
+                        window = mActivity.getWindow()
+                        if mode == 'resize':
+                            window.setSoftInputMode(LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                        else:
+                            window.setSoftInputMode(LayoutParams.SOFT_INPUT_ADJUST_PAN)
+                            
+                    _set_softinput_mode(softinput_mode)
+                except ImportError:
+                    pass
 
                 """
                 Android input type selection.

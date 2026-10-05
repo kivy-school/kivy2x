@@ -136,8 +136,6 @@ if platform == 'android':
 
                 class MyInput(AndroidKeyboardProxy, TextInput):
                     pass
-
-            Or use NativeTextInput which already does this for you.
             """
 
             # Set to True so Kivy's TextInput skips SDL on_textinput path

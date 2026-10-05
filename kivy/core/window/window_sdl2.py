@@ -973,8 +973,10 @@ class WindowSDL(WindowBase):
             callback, target, input_type, keyboard_suggestions
         )
         # On Android, KivyKeyboardProxy.java manages the IME directly.
-        # Calling SDL's show_keyboard here would interfere, so we skip it.
-        if not _android_proxy_active:
+        # Calling SDL's show_keyboard here would interfere, so we skip it
+        # ONLY if the target widget is actually using the proxy.
+        is_proxy = _android_proxy_active and hasattr(target, '_proxy_keyboard_active')
+        if not is_proxy:
             self._win.show_keyboard(
                 self._system_keyboard,
                 self.softinput_mode,
@@ -986,8 +988,11 @@ class WindowSDL(WindowBase):
 
     def release_keyboard(self, *largs):
         super(WindowSDL, self).release_keyboard(*largs)
-        # Same guard: on Android our Java proxy handles hide.
-        if not _android_proxy_active:
+        # Same guard: on Android our Java proxy handles hide,
+        # but only if the target is actually using the proxy.
+        target = largs[0] if largs else None
+        is_proxy = _android_proxy_active and hasattr(target, '_proxy_keyboard_active')
+        if not is_proxy:
             self._win.hide_keyboard()
         self._sdl_keyboard = None
         return True
