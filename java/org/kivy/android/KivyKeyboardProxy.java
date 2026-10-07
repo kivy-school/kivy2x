@@ -13,9 +13,9 @@ package org.kivy.android;
  *   [Android IME] -> [KivyKeyboardProxy (Java)] -> [TextInputListener]
  *                                                       |
  *                                               Implemented in Python
- *                                               via jnius autoclass
+ *                                               via pyjnius
  *
- * Python usage (see kivy/uix/behaviors/keyboard_proxy.py):
+ * Python usage (see app.py):
  *   from jnius import autoclass
  *   KivyKeyboardProxy = autoclass('org.kivy.android.KivyKeyboardProxy')
  *   proxy = KivyKeyboardProxy(activity)
@@ -23,8 +23,9 @@ package org.kivy.android;
  *   proxy.show(input_type_str, show_suggestions)
  *   proxy.hide()
  *
- * Build: add this file's directory to buildozer.spec
- *   android.add_java_dir = kivy/java
+ * Build: // ksproject automatically parses `.java` into AGP.
+ *   uv sync
+ *   uv run ksproject android build
  */
 
 import android.app.Activity;
@@ -142,6 +143,19 @@ public class KivyKeyboardProxy {
                 public boolean setComposingText(CharSequence text,
                                                 int newCursorPosition) {
                     String s = text.toString();
+                    
+                    int start = Math.min(_selStart, _selEnd);
+                    int end = Math.max(_selStart, _selEnd);
+                    if (composingLength > 0) {
+                        start = Math.max(0, start - composingLength);
+                    }
+                    try {
+                        if (start >= 0 && end <= _currentText.length() && start <= end) {
+                            _currentText = _currentText.substring(0, start) + s + _currentText.substring(end);
+                            _selStart = _selEnd = start + s.length();
+                        }
+                    } catch (Exception e) {}
+
                     if (_listener != null) {
                         _listener.onComposing(s, composingLength);
                     }
@@ -155,6 +169,19 @@ public class KivyKeyboardProxy {
                 public boolean commitText(CharSequence text,
                                           int newCursorPosition) {
                     String s = text.toString();
+                    
+                    int start = Math.min(_selStart, _selEnd);
+                    int end = Math.max(_selStart, _selEnd);
+                    if (composingLength > 0) {
+                        start = Math.max(0, start - composingLength);
+                    }
+                    try {
+                        if (start >= 0 && end <= _currentText.length() && start <= end) {
+                            _currentText = _currentText.substring(0, start) + s + _currentText.substring(end);
+                            _selStart = _selEnd = start + s.length();
+                        }
+                    } catch (Exception e) {}
+
                     if (_listener != null) {
                         if (composingLength > 0) {
                             // Flush any pending composing chars first
@@ -211,6 +238,18 @@ public class KivyKeyboardProxy {
                 public boolean deleteSurroundingText(int beforeLength,
                                                      int afterLength) {
                     if ((beforeLength > 0 || afterLength > 0) && _listener != null) {
+                        int start = Math.min(_selStart, _selEnd);
+                        int end = Math.max(_selStart, _selEnd);
+                        int keepStart = Math.max(0, start - beforeLength);
+                        int keepEnd = Math.min(_currentText.length(), end + afterLength);
+                        
+                        try {
+                            if (keepStart >= 0 && keepEnd <= _currentText.length() && keepStart <= keepEnd) {
+                                _currentText = _currentText.substring(0, keepStart) + _currentText.substring(keepEnd);
+                                _selStart = _selEnd = keepStart;
+                            }
+                        } catch (Exception e) {}
+
                         _listener.onDeleteSurrounding(beforeLength, afterLength);
                         return true;
                     }
@@ -292,7 +331,7 @@ public class KivyKeyboardProxy {
         activity.runOnUiThread(() ->
             activity.addContentView(
                 _proxyView,
-                new ViewGroup.LayoutParams(1, 1)
+                new android.widget.FrameLayout.LayoutParams(1, 1)
             )
         );
     }
@@ -309,12 +348,27 @@ public class KivyKeyboardProxy {
      *                               "datetime", "tel", "address", "null"
      * @param suggestions   Whether to show IME suggestions / autocorrect.
      */
-    public void show(String inputTypeStr, boolean suggestions, boolean multiline) {
+    public void show(String inputTypeStr, boolean suggestions, boolean multiline, String softinputMode, int x, int y, int w, int h) {
         _currentInputType = resolveInputType(inputTypeStr, multiline);
         _showSuggestions  = suggestions;
         _multiline        = multiline;
 
         _activity.runOnUiThread(() -> {
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) _proxyView.getLayoutParams();
+            if (params != null) {
+                params.leftMargin = x;
+                params.topMargin = y;
+                params.width = w > 0 ? w : 1;
+                params.height = h > 0 ? h : 1;
+                _proxyView.setLayoutParams(params);
+            }
+
+            if (softinputMode != null && softinputMode.equals("resize")) {
+                _activity.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            } else {
+                _activity.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+            }
+
             _proxyView.removeCallbacks(hideRunnable);
             _proxyView.requestFocus();
             InputMethodManager imm = getIMM();

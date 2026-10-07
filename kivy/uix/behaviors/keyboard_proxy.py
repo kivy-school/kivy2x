@@ -21,12 +21,6 @@ Usage
 -----
 This module is imported and activated automatically by textinput.py on Android.
 You do not need to import it manually unless you are building a custom widget.
-
-If you are building something custom::
-
-    from kivy.uix.behaviors.keyboard_proxy import AndroidKeyboardProxy
-    class MyInput(AndroidKeyboardProxy, TextInput):
-        pass
 """
 
 from kivy.utils import platform
@@ -188,7 +182,26 @@ if platform == 'android':
                 input_type = getattr(self, 'input_type', 'text') or 'text'
                 suggestions = getattr(self, 'keyboard_suggestions', True)
                 multiline = getattr(self, 'multiline', False)
-                proxy.show(input_type, suggestions, multiline)
+
+                from kivy.core.window import Window
+                softinput_mode = Window.softinput_mode or ''
+                
+                wx, wy = Window.system_size
+                x, y = self.to_window(self.x, self.y)
+                w, h = self.width, self.height
+
+                android_y = wy - (y + h)
+
+                proxy.show(
+                    input_type,
+                    suggestions,
+                    multiline,
+                    softinput_mode,
+                    int(x),
+                    int(android_y),
+                    int(w),
+                    int(h)
+                )
                 self._proxy_keyboard_active = True
                 Logger.debug(
                     'KeyboardProxy: started for %r (input_type=%s)',

@@ -30,6 +30,7 @@ full support for:
 * Gesture / swipe typing
 * Done / Search / Go action buttons firing :meth:`TextInput.on_text_validate`
 * Proper handling of physical keyboard arrow keys
+* Native window panning and resizing on focus (``softinput_mode``)
 
 On all other platforms, :class:`TextInput` behaves normally using the standard SDL2
 keyboard path.
