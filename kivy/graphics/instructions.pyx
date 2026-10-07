@@ -214,21 +214,31 @@ cdef class InstructionGroup(Instruction):
         '''Remove all the :class:`Instructions <Instruction>`.
         '''
         cdef Instruction c
-        for c in self.children[:]:
+        cdef list new_children = []
+        for c in self.children:
             if c.flags & GI_NO_REMOVE:
-                continue
-            self.remove(c)
+                new_children.append(c)
+            else:
+                c.set_parent(None)
+        self.children = new_children
+        self.flag_data_update()
 
     cpdef remove_group(self, str groupname):
         '''Remove all :class:`Instructions <Instruction>` with a specific group
         name.
         '''
         cdef Instruction c
-        for c in self.children[:]:
+        cdef list new_children = []
+        for c in self.children:
             if c.flags & GI_NO_REMOVE:
+                new_children.append(c)
                 continue
             if c.group == groupname:
-                self.remove(c)
+                c.set_parent(None)
+            else:
+                new_children.append(c)
+        self.children = new_children
+        self.flag_data_update()
 
     cpdef get_group(self, str groupname):
         '''Return an iterable for all the :class:`Instructions <Instruction>`

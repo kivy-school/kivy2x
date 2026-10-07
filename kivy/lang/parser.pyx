@@ -568,16 +568,21 @@ class Parser(object):
             else:
                 raise ParserException(self, ln, 'Unknown directive')
 
-    def parse(self, content):
+    def parse(self, str content):
         '''Parse the contents of a Parser file and return a list
         of root objects.
         '''
-        # Read and parse the lines of the file
-        lines = content.splitlines()
-        if not lines:
+        cdef list lines_str = content.splitlines()
+        if not lines_str:
             return
-        num_lines = len(lines)
-        lines = list(zip(list(range(num_lines)), lines))
+            
+        cdef int num_lines = len(lines_str)
+        cdef list lines = []
+        cdef int _i
+        
+        for _i in range(num_lines):
+            lines.append((_i, lines_str[_i]))
+            
         self.sourcecode = lines[:]
 
         if __debug__:
@@ -602,31 +607,43 @@ class Parser(object):
             ln, content = remaining_lines[0]
             raise ParserException(self, ln, 'Invalid data (not parsed)')
 
-    def strip_comments(self, lines):
+    def strip_comments(self, list lines):
         '''Remove all comments from all lines in-place.
            Comments need to be on a single line and not at the end of a line.
            i.e. a comment line's first non-whitespace character must be a #.
         '''
+        cdef list new_lines = []
+        cdef tuple line_tuple
+        cdef int ln
+        cdef str line, stripped
+        
         # extract directives
-        for ln, line in lines[:]:
+        for line_tuple in lines:
+            ln, line = line_tuple
             stripped = line.strip()
             if stripped[:2] == '#:':
                 self.directives.append((ln, stripped[2:]))
-            if stripped[:1] == '#':
-                lines.remove((ln, line))
-            if not stripped:
-                lines.remove((ln, line))
+            if stripped[:1] == '#' or not stripped:
+                continue
+            new_lines.append(line_tuple)
+        
+        lines[:] = new_lines
 
-    def parse_level(self, level, lines, spaces=0):
+    def parse_level(self, int level, list lines, int spaces=0):
         '''Parse the current level (level * spaces) indentation.
         '''
-        indent = spaces * level if spaces > 0 else 0
-        objects = []
+        cdef int indent = spaces * level if spaces > 0 else 0
+        cdef list objects = []
 
         current_object = None
         current_property = None
         current_propobject = None
-        i = 0
+        cdef int i = 0
+        cdef int count, rlevel, ln
+        cdef tuple line
+        cdef str content, tmp, name, value
+        cdef list x
+
         while i < len(lines):
             line = lines[i]
             ln, content = line

@@ -18,6 +18,22 @@ The :class:`TextInput` uses two different coordinate systems:
 * (col, row) - cursor index in characters / lines, used for selection
   and cursor movement.
 
+Android Native Keyboard (IME) Support
+-------------------------------------
+
+On Android, Kivy's :class:`TextInput` automatically uses the native Android IME
+via a real Android View (``KivyKeyboardProxy.java``) instead of SDL2. This provides
+full support for:
+
+* IME composing and commit protocols (CJK characters, Indic scripts)
+* Predictive keyboards and autocorrect
+* Gesture / swipe typing
+* Done / Search / Go action buttons firing :meth:`TextInput.on_text_validate`
+* Proper handling of physical keyboard arrow keys
+* Native window panning and resizing on focus (``softinput_mode``)
+
+On all other platforms, :class:`TextInput` behaves normally using the standard SDL2
+keyboard path.
 
 Usage example
 -------------
@@ -178,6 +194,7 @@ from kivy.core.window import Window
 from kivy.metrics import inch
 from kivy.utils import boundary, platform
 from kivy.uix.behaviors import FocusBehavior
+from kivy.uix.behaviors.keyboard_proxy import AndroidKeyboardProxy
 
 from kivy.core.text import Label, DEFAULT_FONT
 from kivy.graphics import Color, Rectangle, PushMatrix, PopMatrix, Callback
@@ -448,7 +465,7 @@ class TextInputCutCopyPaste(Bubble):
         anim.start(self)
 
 
-class TextInput(FocusBehavior, Widget):
+class TextInput(AndroidKeyboardProxy, FocusBehavior, Widget):
     '''TextInput class. See module documentation for more information.
 
     :Events:

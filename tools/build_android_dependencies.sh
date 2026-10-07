@@ -1,3 +1,4 @@
+#!/bin/bash
 set -e -x
 
 # Android SDL2

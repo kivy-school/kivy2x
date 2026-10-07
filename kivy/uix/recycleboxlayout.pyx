@@ -30,18 +30,23 @@ class RecycleBoxLayout(RecycleLayout, BoxLayout):
         self.funbind('children', self._trigger_layout)
 
     def _update_sizes(self, changed):
-        horizontal = self.orientation == 'horizontal'
+        cdef bint horizontal = self.orientation == 'horizontal'
+        cdef float padding_left, padding_top, padding_right, padding_bottom
         padding_left, padding_top, padding_right, padding_bottom = self.padding
-        padding_x = padding_left + padding_right
-        padding_y = padding_top + padding_bottom
-        selfw = self.width
-        selfh = self.height
-        layout_w = max(0, selfw - padding_x)
-        layout_h = max(0, selfh - padding_y)
-        cx = self.x + padding_left
-        cy = self.y + padding_bottom
-        view_opts = self.view_opts
+        cdef float padding_x = padding_left + padding_right
+        cdef float padding_y = padding_top + padding_bottom
+        cdef float selfw = self.width
+        cdef float selfh = self.height
+        cdef float layout_w = max(0, selfw - padding_x)
+        cdef float layout_h = max(0, selfh - padding_y)
+        cdef float cx = self.x + padding_left
+        cdef float cy = self.y + padding_bottom
+        cdef list view_opts = self.view_opts
         remove_view = self.remove_view
+        
+        cdef float w, h, wn, hn, wo, ho, xo, yo, posx, posy
+        cdef int index
+        cdef dict opt, phn
 
         for (index, widget, (w, h), (wn, hn), (shw, shh), (shnw, shnh),
              (shw_min, shh_min), (shwn_min, shhn_min), (shw_max, shh_max),
@@ -108,8 +113,12 @@ class RecycleBoxLayout(RecycleLayout, BoxLayout):
             self.minimum_size = l + r, t + b
             return
 
-        view_opts = self.view_opts
-        n = len(view_opts)
+        cdef list view_opts = self.view_opts
+        cdef int n = len(view_opts)
+        cdef float x, y, w, h, wo, ho
+        cdef int i
+        cdef dict opt
+        
         for i, x, y, w, h in self._iterate_layout(
                 [(opt['size'], opt['size_hint'], opt['pos_hint'],
                   opt['size_hint_min'], opt['size_hint_max']) for
@@ -118,13 +127,13 @@ class RecycleBoxLayout(RecycleLayout, BoxLayout):
             shw, shh = opt['size_hint']
             opt['pos'] = x, y
             wo, ho = opt['size']
-            # layout won't/shouldn't change previous size if size_hint is None
-            # which is what w/h being None means.
             opt['size'] = [(wo if shw is None else w),
                            (ho if shh is None else h)]
 
-        spacing = self.spacing
-        pos = self._rv_positions = [None, ] * len(data)
+        cdef float spacing = self.spacing
+        cdef list pos = [None, ] * len(data)
+        self._rv_positions = pos
+        cdef float last
 
         if self.orientation == 'horizontal':
             pos[0] = self.x
@@ -137,7 +146,6 @@ class RecycleBoxLayout(RecycleLayout, BoxLayout):
             last = pos[-1] = \
                 self.y + self.height - self.padding[1] - \
                 view_opts[0]['size'][1] - spacing / 2.
-            n = len(view_opts)
             for i, val in enumerate(view_opts[1:], 1):
                 last -= spacing + val['size'][1]
                 pos[n - 1 - i] = last
@@ -181,3 +189,22 @@ class RecycleBoxLayout(RecycleLayout, BoxLayout):
         else:
             a, b = at_idx((x, y + h)), at_idx((x, y))
         return list(range(a, b + 1))
+
+    def goto_view(self, index):
+        if not self._rv_positions or index < 0 or index >= len(self._rv_positions):
+            return
+        rv = self.recycleview
+        if not rv:
+            return
+        cdef float pos = self._rv_positions[index]
+        if self.orientation == 'horizontal':
+            if self.width <= rv.width:
+                rv.scroll_x = 0
+            else:
+                rv.scroll_x = max(0.0, min(1.0, pos / (self.width - rv.width)))
+        else:
+            if self.height <= rv.height:
+                rv.scroll_y = 1.0
+            else:
+                # y is inverted in scroll_y (1 is top, 0 is bottom)
+                rv.scroll_y = max(0.0, min(1.0, (pos - rv.height) / (self.height - rv.height)))

@@ -1,7 +1,7 @@
 from jnius import PythonJavaClass, autoclass, java_method
-from android.config import ACTIVITY_CLASS_NAME, ACTIVITY_CLASS_NAMESPACE
+from android.config import ACTIVITY_CLASS_NAMESPACE
 
-_activity = autoclass(ACTIVITY_CLASS_NAME).mActivity
+from android import mActivity as _activity
 
 _callbacks = {
     'on_new_intent': [],

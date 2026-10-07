@@ -327,9 +327,11 @@ class RecycleLayout(RecycleLayoutManagerBehavior, Layout):
     def compute_layout(self, data, flags):
         self._size_needs_update = False
 
-        opts = self.view_opts
-        changed = []
-        for widget, index in self.view_indices.items():
+        cdef list opts = self.view_opts
+        cdef list changed = []
+        cdef dict view_indices = self.view_indices
+        cdef int index
+        for widget, index in view_indices.items():
             opt = opts[index]
             s = opt['size']
             w, h = sn = list(widget.size)
@@ -366,12 +368,13 @@ class RecycleLayout(RecycleLayoutManagerBehavior, Layout):
         assert False
 
     def set_visible_views(self, indices, data, viewport):
-        view_opts = self.view_opts
+        cdef list view_opts = self.view_opts
         new, remaining, old = self.recycleview.view_adapter.set_visible_views(
             indices, data, view_opts)
 
         remove = self.remove_widget
-        view_indices = self.view_indices
+        cdef dict view_indices = self.view_indices
+        cdef int index
         for _, widget in old:
             remove(widget)
             del view_indices[widget]
@@ -396,18 +399,18 @@ class RecycleLayout(RecycleLayoutManagerBehavior, Layout):
                 add(widget)
 
         # finally, make sure if the size has changed to cause a re-layout
-        changed = False
+        cdef bint is_changed = False
         for index, widget in new:
             opt = view_opts[index]
-            if (changed or widget.size == opt['size'] and
+            if (is_changed or widget.size == opt['size'] and
                     widget.size_hint == opt['size_hint'] and
                     widget.size_hint_min == opt['size_hint_min'] and
                     widget.size_hint_max == opt['size_hint_max'] and
                     widget.pos_hint == opt['pos_hint']):
                 continue
-            changed = True
+            is_changed = True
 
-        if changed:
+        if is_changed:
             # we could use LayoutChangeException here, but refresh_views in rv
             # needs to be updated to watch for it in the layout phase
             self._size_needs_update = True

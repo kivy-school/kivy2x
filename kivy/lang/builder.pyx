@@ -553,12 +553,20 @@ class BuilderBase(object):
         self._match_cache.clear()
         self._match_name_cache.clear()
 
-    def _apply_rule(self, widget, rule, rootrule, template_ctx=None,
-                    ignored_consts=set(), rule_children=None):
+    def _apply_rule(self, object widget, object rule, object rootrule, dict template_ctx=None,
+                      set ignored_consts=set(), list rule_children=None):
         # widget: the current instantiated widget
         # rule: the current rule
         # rootrule: the current root rule (for children of a rule)
 
+        cdef dict rctx
+        cdef dict _ids
+        cdef object _root
+        cdef dict _new_ids
+        cdef str _key
+        cdef object _value
+        cdef list crule_children
+        
         # will collect reference to all the id in children
         assert rule not in self.rulectx
         self.rulectx[rule] = rctx = {

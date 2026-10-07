@@ -36,20 +36,39 @@ class RecycleGridLayout(RecycleLayout, GridLayout):
         pass
 
     def _fill_rows_cols_sizes(self):
-        cols, rows = self._cols, self._rows
-        cols_sh, rows_sh = self._cols_sh, self._rows_sh
-        cols_sh_min, rows_sh_min = self._cols_sh_min, self._rows_sh_min
-        cols_sh_max, rows_sh_max = self._cols_sh_max, self._rows_sh_max
+        cdef list cols = self._cols
+        cdef list rows = self._rows
+        cdef list cols_sh = self._cols_sh
+        cdef list rows_sh = self._rows_sh
+        cdef list cols_sh_min = self._cols_sh_min
+        cdef list rows_sh_min = self._rows_sh_min
+        cdef list cols_sh_max = self._cols_sh_max
+        cdef list rows_sh_max = self._rows_sh_max
         self._cols_count = cols_count = [defaultdict(int) for _ in cols]
         self._rows_count = rows_count = [defaultdict(int) for _ in rows]
 
         # calculate minimum size for each columns and rows
         idx_iter = self._create_idx_iter(len(cols), len(rows))
-        has_bound_y = has_bound_x = False
+        cdef bint has_bound_y = False
+        cdef bint has_bound_x = False
+        
+        cdef int col, row
+        cdef dict opt
+        cdef float w, h
+        
         for opt, (col, row) in zip(self.view_opts, idx_iter):
-            (shw, shh), (w, h) = opt['size_hint'], opt['size']
-            shw_min, shh_min = opt['size_hint_min']
-            shw_max, shh_max = opt['size_hint_max']
+            sh = opt['size_hint']
+            shw = sh[0]
+            shh = sh[1]
+            sz = opt['size']
+            w = sz[0]
+            h = sz[1]
+            sh_min = opt['size_hint_min']
+            shw_min = sh_min[0]
+            shh_min = sh_min[1]
+            sh_max = opt['size_hint_max']
+            shw_max = sh_max[0]
+            shh_max = sh_max[1]
 
             if shw is None:
                 cols_count[col][w] += 1
@@ -83,11 +102,18 @@ class RecycleGridLayout(RecycleLayout, GridLayout):
 
     def _update_rows_cols_sizes(self, changed):
         cols_count, rows_count = self._cols_count, self._rows_count
-        cols, rows = self._cols, self._rows
+        cdef list cols = self._cols
+        cdef list rows = self._rows
         remove_view = self.remove_view
-        n_cols = len(cols)
-        n_rows = len(rows)
+        cdef int n_cols = len(cols)
+        cdef int n_rows = len(rows)
         orientation = self.orientation
+        
+        cdef int index
+        cdef float w, h, wn, hn
+        cdef int col, row
+        cdef float col_w, row_h
+        cdef bint was_last_w, was_last_h
 
         # this can be further improved to reduce re-comp, but whatever...
         for index, widget, (w, h), (wn, hn), sh, shn, sh_min, shn_min, \
@@ -253,3 +279,34 @@ class RecycleGridLayout(RecycleLayout, GridLayout):
         if not self._fills_from_top_to_bottom:
             row_idx = n_rows - row_idx - 1
         return (col_idx, row_idx, )
+
+    def goto_view(self, index):
+        if self._cols_pos is None or self._rows_pos is None:
+            return
+        rv = self.recycleview
+        if not rv:
+            return
+
+        cdef int n_cols = len(self._cols)
+        cdef int n_rows = len(self._rows)
+        if n_cols == 0 or n_rows == 0:
+            return
+
+        cdef int col_idx, row_idx
+        col_idx, row_idx = self._calculate_idx_from_a_view_idx(n_cols, n_rows, index)
+
+        if col_idx < 0 or col_idx >= len(self._cols_pos) or row_idx < 0 or row_idx >= len(self._rows_pos):
+            return
+
+        cdef float pos_x = self._cols_pos[col_idx]
+        cdef float pos_y = self._rows_pos[row_idx]
+
+        if self.width <= rv.width:
+            rv.scroll_x = 0
+        else:
+            rv.scroll_x = max(0.0, min(1.0, pos_x / (self.width - rv.width)))
+
+        if self.height <= rv.height:
+            rv.scroll_y = 1.0
+        else:
+            rv.scroll_y = max(0.0, min(1.0, (pos_y - rv.height) / (self.height - rv.height)))

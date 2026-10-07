@@ -13,7 +13,8 @@ However, inheriting from RecycleDataViewBehavior adds methods for converting
 the data to a view.
 
 TODO:
-    * Make view caches specific to each view class type.
+    * Test when views cannot be found (e.g. viewclass is None).
+    * Fix selection goto.
 
 '''
 
@@ -23,7 +24,7 @@ from collections import defaultdict
 
 __all__ = (
     'RecycleDataViewBehavior', 'RecycleKVIDsDataViewBehavior',
-    'RecycleDataAdapter')
+    'RecycleDataAdapter', 'clear_cache')
 
 _view_base_cache = {}
 '''Cache whose keys are classes and values is a boolean indicating whether the
@@ -49,6 +50,13 @@ def _clean_cache():
     for cls, instances in _cached_views.items():
         _cache_count -= max(0, len(instances) - max_size)
         del instances[max_size:]
+
+def clear_cache():
+    '''Clears all the views in the cache.
+    '''
+    global _cache_count
+    _cached_views.clear()
+    _cache_count = 0
 
 
 class RecycleDataViewBehavior(object):
@@ -226,7 +234,7 @@ class RecycleDataAdapter(EventDispatcher):
         self.refresh_view_attrs(index, data_item, view)
         return view
 
-    def get_view(self, index, data_item, viewclass):
+    def get_view(self, int index, data_item, viewclass):
         '''(internal) Returns a view instance for the data at `index`
 
         It looks through the various caches and finally creates a view if it
@@ -240,7 +248,7 @@ class RecycleDataAdapter(EventDispatcher):
         dirty_views = self.dirty_views
         if viewclass is None:
             return
-        stale = False
+        cdef bint stale = False
         view = None
 
         if viewclass in dirty_views:  # get it first from dirty list
@@ -344,7 +352,7 @@ class RecycleDataAdapter(EventDispatcher):
         This is typically called when the layout manager needs to re-layout all
         the data.
         '''
-        views = self.views
+        cdef dict views = self.views
         if not views:
             return
 

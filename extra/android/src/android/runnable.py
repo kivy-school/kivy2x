@@ -3,11 +3,8 @@ Runnable
 ========
 '''
 
-from jnius import PythonJavaClass, java_method, autoclass
-from android.config import ACTIVITY_CLASS_NAME
-
-# Reference to the activity
-_PythonActivity = autoclass(ACTIVITY_CLASS_NAME)
+from jnius import PythonJavaClass, java_method
+from android import mActivity
 
 # Cache of functions table. In older Android versions the number of JNI references
 # is limited, so by caching them we avoid running out.
@@ -25,22 +22,25 @@ class Runnable(PythonJavaClass):
     def __init__(self, func):
         super().__init__()
         self.func = func
+        self.calls = []
 
     def __call__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+        self.calls.append((args, kwargs))
         Runnable.__runnables__.append(self)
-        _PythonActivity.mActivity.runOnUiThread(self)
+        mActivity.runOnUiThread(self)
 
     @java_method('()V')
     def run(self):
         try:
-            self.func(*self.args, **self.kwargs)
+            if self.calls:
+                args, kwargs = self.calls.pop(0)
+                self.func(*args, **kwargs)
         except:  # noqa E722
             import traceback
             traceback.print_exc()
 
-        Runnable.__runnables__.remove(self)
+        if self in Runnable.__runnables__:
+            Runnable.__runnables__.remove(self)
 
 
 def run_on_ui_thread(f):

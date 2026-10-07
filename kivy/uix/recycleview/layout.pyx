@@ -67,10 +67,11 @@ class LayoutSelectionBehavior(CompoundSelectionBehavior):
         self.nodes_order_reversed = False
         super(LayoutSelectionBehavior, self).__init__(**kwargs)
 
-    def compute_sizes_from_data(self, data, flags):
+    def compute_sizes_from_data(self, list data, flags):
         # overwrite this method so that when data changes we update
         # selectable nodes.
         key = self.key_selection
+        cdef list nodes
         if key is None:
             nodes = self._selectable_nodes = []
         else:
